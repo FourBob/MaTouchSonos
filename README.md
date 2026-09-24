@@ -61,9 +61,33 @@ Die Pinbelegung steht in [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ### 1. Voraussetzungen
 
-- [VS Code](https://code.visualstudio.com/) mit der Erweiterung **PlatformIO IDE**
-  (oder PlatformIO Core auf der Kommandozeile: `pip install platformio`)
 - Git
+- **PlatformIO**: entweder als VS-Code-Erweiterung oder als Kommandozeilen-Werkzeug `pio`
+
+**PlatformIO für die Kommandozeile installieren:**
+
+| System | Befehl |
+|---|---|
+| macOS (Homebrew) | `brew install platformio` |
+| Linux / macOS ohne Homebrew | offizieller Installer, siehe unten |
+| Windows | [Installer-Anleitung](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html) oder VS-Code-Erweiterung |
+
+```bash
+# Offizieller Installer (macOS/Linux)
+curl -fsSL -o get-platformio.py https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py
+python3 get-platformio.py
+# pio in den Suchpfad aufnehmen (zsh; bei bash ~/.bashrc statt ~/.zshrc)
+echo 'export PATH="$PATH:$HOME/.platformio/penv/bin"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Prüfen mit `pio --version`. Meldet die Shell `command not found: pio`, obwohl die
+VS-Code-Erweiterung installiert ist, fehlt nur die `export PATH=…`-Zeile von oben.
+
+**Alternativ VS Code:** [VS Code](https://code.visualstudio.com/) installieren und dort die Erweiterung
+**PlatformIO IDE** hinzufügen. Das Projekt öffnen und über die PlatformIO-Leiste unten bauen und flashen.
+
+Beim ersten Build lädt PlatformIO die ESP32-Toolchain herunter (ca. 500 MB, einige Minuten).
 
 ### 2. Projekt holen
 
