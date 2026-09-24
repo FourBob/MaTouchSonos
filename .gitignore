@@ -11,7 +11,11 @@
 .DS_Store
 
 # Zugangsdaten – niemals committen!
-include/secrets.h
+# Nur die Vorlage secrets.example.h gehört ins Repo.
+secrets*.h
+!secrets.example.h
+*.env
+.env*
 
 # Python (tools/)
 __pycache__/
