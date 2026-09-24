@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Unit-Tests (native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-native-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio
+      - run: pio test -e native
+
+  firmware:
+    name: Firmware bauen (matouch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-matouch-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio
+      - name: Platzhalter für WLAN-Zugangsdaten anlegen
+        run: cp -n include/secrets.example.h include/secrets.h
+      - run: pio run -e matouch
+      - name: Speicherbedarf
+        run: pio run -e matouch -t size | tail -n 20
+      - name: Firmware-Dateien sammeln
+        run: |
+          mkdir -p dist
+          cp .pio/build/matouch/firmware.bin .pio/build/matouch/bootloader.bin .pio/build/matouch/partitions.bin dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-matouch
+          path: dist/

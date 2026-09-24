@@ -1,0 +1,7 @@
+{
+  "name": "app_core",
+  "version": "0.1.0",
+  "description": "Hardwareunabhängige Bedienlogik (Encoder, Taste, später Zustandsmaschine). Auf dem PC testbar.",
+  "frameworks": "*",
+  "platforms": "*"
+}

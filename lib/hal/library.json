@@ -1,0 +1,7 @@
+{
+  "name": "hal",
+  "version": "0.1.0",
+  "description": "Hardware-Abstraktion für das MaTouch ESP32-S3 Rotary 2.1\": Display (ST7701 + LVGL), Touch (CST826), Drehencoder, Taste.",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

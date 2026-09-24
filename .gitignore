@@ -1,0 +1,19 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+
+# Zugangsdaten – niemals committen!
+include/secrets.h
+
+# Python (tools/)
+__pycache__/
+*.pyc
+.venv/
