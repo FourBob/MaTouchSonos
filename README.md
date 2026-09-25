@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 5 von 9 abgeschlossen: Now Playing, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen und Raumwahl. Die Anlage wird automatisch gefunden. Als Nächstes: Albumcover.
+> **Projektstand:** Schritt 6 von 9: Now Playing mit Albumcover, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen und Raumwahl.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -39,7 +39,7 @@ Außen läuft der Fortschrittsbogen.
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ✅ getestet |
 | 4 | Ringmenü und Scrubbing | ✅ getestet |
 | 5 | Räume automatisch finden und wählen | ✅ getestet |
-| 6 | Albumcover | ⏳ |
+| 6 | Albumcover (je nach Dienst: Speaker-Proxy, HTTPS, JPEG/PNG) | 🧪 wartet auf Geräte-Test |
 | 7 | Sonos-Favoriten und Radio starten | ⏳ |
 | 8 | Gruppen verwalten, Gruppenlautstärke | ⏳ |
 | 9 | Live-Updates, Energiesparen, Feinschliff | ⏳ |
@@ -157,7 +157,8 @@ pio test -e native                                  # Unit-Tests auf dem PC, kei
 pio run  -e matouch                                 # Firmware bauen
 python3 tools/sonos_probe.py <Speaker-IP> volume get  # Sonos-Befehl vom PC aus testen
 python3 tools/sonos_probe.py <Speaker-IP> transport info
-python3 tools/sonos_probe.py <Speaker-IP> nowplaying
+python3 tools/sonos_probe.py <Speaker-IP> nowplaying   # zeigt auch die Cover-Adresse
+python3 tools/sonos_probe.py - cover '<Cover-Adresse>'  # ist das Cover darstellbar?
 ```
 
 Das Projekt wird auf vier Ebenen getestet: Unit-Tests, CI-Build, Protokoll-Tests gegen die
@@ -208,6 +209,7 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 | Anzeige „include/secrets.h ausfüllen“ | Die Datei enthält noch den Platzhalter `MeinWLAN`. |
 | „Keine Sonos-Anlage gefunden“ | Gerät und Speaker müssen im selben Netz sein. Manche Router blockieren Multicast zwischen 2,4 und 5 GHz oder im Gast-WLAN. Abhilfe: `SONOS_IP` in `secrets.h` eintragen, dann wird die Anlage über diese IP gefunden. |
 | Bleibt bei „WLAN verbinden …“ | SSID/Passwort prüfen. Nur 2,4 GHz wird unterstützt. |
+| Kein Cover bei einem Dienst | Adresse mit `sonos_probe.py <IP> nowplaying` ansehen und mit `sonos_probe.py - cover '<Adresse>'` prüfen. Progressive JPEGs zeigt das Gerät nur unscharf, WebP/GIF gar nicht. Das Log zeigt `COVER … nicht darstellbar: …`. |
 | Wischen wechselt den Titel nicht | Bei Radio, TV und Line-In gibt es keinen nächsten Titel (Hinweis „Bei dieser Quelle nicht möglich“). Sonst: zügig über mindestens ein Drittel des Displays wischen. |
 | „Nichts zum Abspielen“ | Die Warteschlange des Speakers ist leer. Erst in der Sonos-App etwas starten. Ab Schritt 7 geht das mit Favoriten direkt am Gerät. |
 | „Speaker nicht erreichbar“ | Speaker-IP prüfen: `python3 tools/sonos_probe.py <IP> info` muss den Raumnamen zeigen. |

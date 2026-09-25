@@ -40,6 +40,9 @@ public:
 
     void setPlayState(app::PlayState state);
 
+    /** Cover als Hintergrund (480×480 RGB565, bereits abgedunkelt) oder nullptr = schwarz. */
+    void setCover(const uint16_t* pixels);
+
     /** Lautstärke setzen (Ring + Zahl in der Einblendung). */
     void setVolume(int volume, bool known);
     /** Lautstärke-Einblendung zeigen; verschwindet nach 2 s ohne weitere Änderung. */

@@ -143,6 +143,7 @@ NowPlaying buildNowPlaying(const PositionInfo& pos, const MediaInfo* media) {
 
     const bool radio = isStreamUri(pos.trackUri) || pos.durationSec == 0;
     np.albumArtUri = meta.albumArtUri;
+    np.trackUri = pos.trackUri;
 
     if (radio) {
         np.kind = SourceKind::Radio;

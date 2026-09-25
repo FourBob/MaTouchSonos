@@ -84,5 +84,7 @@ Auf der Platine gibt es je einen I2C- und einen UART-Anschluss. Beide werden in 
 |---|---|---|
 | Framebuffer des Panels | 480×480×2 = 450 KB | PSRAM |
 | LVGL-Zeichenpuffer | 2 × 45 KB | interner RAM (Fallback PSRAM) |
-| Albumcover (ab Schritt 6) | ca. 450 KB dekodiert | PSRAM |
+| Albumcover: 2 Puffer (Doppelpufferung) | 2 × 450 KB | PSRAM |
+| Albumcover: Download + Dekodierpuffer (kurzzeitig) | bis ~0,7 MB + ~0,8 MB (640 px) | PSRAM |
+| TLS für HTTPS-Cover (kurzzeitig) | ca. 40–50 KB | interner RAM |
 | WLAN-Stack, HTTP | ca. 60–80 KB | interner RAM |

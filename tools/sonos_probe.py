@@ -149,6 +149,55 @@ def cmd_groupvolume(ip: str, args) -> int:
     return 0 if report("SetGroupVolume", req, status, resp, ms, args.save) else 1
 
 
+def image_info(data: bytes) -> str:
+    """Format und Abmessungen aus den ersten Bytes (JPEG: SOF-Marker, PNG: IHDR)."""
+    if data[:3] == b"\xff\xd8\xff":
+        i = 2
+        while i + 9 < len(data):
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker = data[i + 1]
+            length = int.from_bytes(data[i + 2:i + 4], "big")
+            if marker in (0xC0, 0xC1, 0xC2):
+                h = int.from_bytes(data[i + 5:i + 7], "big")
+                w = int.from_bytes(data[i + 7:i + 9], "big")
+                kind = "progressiv – das Gerät kann es nur unscharf (1/8) anzeigen" if marker == 0xC2 else "baseline"
+                return f"JPEG {w}x{h} ({kind})"
+            i += 2 + length
+        return "JPEG (Größe unbekannt)"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        w = int.from_bytes(data[16:20], "big")
+        h = int.from_bytes(data[20:24], "big")
+        return f"PNG {w}x{h}"
+    return f"unbekanntes Format (erste Bytes {data[:8].hex()}) – das Gerät kann es nicht anzeigen"
+
+
+def cmd_cover(_ip: str, args) -> int:
+    """Lädt eine Cover-Adresse wie die Firmware und zeigt, ob sie darstellbar ist."""
+    import ssl
+    ctx = ssl.create_default_context()
+    start = time.monotonic()
+    try:
+        req = urllib.request.Request(args.url, headers={"User-Agent": "MaTouchSonos/1.0"})
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+            data = resp.read(800 * 1024)
+            ctype = resp.headers.get("Content-Type", "?")
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        print(f"HTTP {e.code} – Adresse liefert kein Bild")
+        return 1
+    except (urllib.error.URLError, TimeoutError) as e:
+        print(f"Nicht erreichbar: {e}")
+        return 1
+    ms = (time.monotonic() - start) * 1000
+    print(f"HTTP {status}, {len(data) // 1024} KB, {ctype}, {ms:.0f} ms")
+    print(f"  {image_info(data)}")
+    if len(data) > 700 * 1024:
+        print("  Achtung: größer als 700 KB – das Gerät lädt es nicht")
+    return 0
+
+
 def cmd_transport(ip: str, args) -> int:
     actions = {
         "info": ("GetTransportInfo", [("InstanceID", "0")]),
@@ -196,6 +245,12 @@ def cmd_nowplaying(ip: str, args) -> int:
     print(f"  Stream:     {didl_field(meta, 'streamContent')}")
     print(f"  Position:   {element(pos, 'RelTime')} / {element(pos, 'TrackDuration')}")
     print(f"  Quelle:     {didl_field(element(media, 'CurrentURIMetaData'), 'title')}")
+    art = didl_field(meta, 'albumArtURI') or didl_field(element(media, 'CurrentURIMetaData'), 'albumArtURI')
+    if art.startswith("/"):
+        art = f"http://{ip}:{PORT}{art}"
+    print(f"  Cover:      {art or '(keins)'}")
+    if art:
+        print(f"              prüfen mit: python3 tools/sonos_probe.py - cover '{art}'")
     return 0
 
 
@@ -276,6 +331,9 @@ def main() -> int:
     sub.add_parser("discover", help="Sonos-Speaker im Netz suchen (SSDP); als IP '-' angeben")
     sub.add_parser("topology", help="Räume und Gruppen (GetZoneGroupState)")
 
+    cv = sub.add_parser("cover", help="Cover-Adresse laden und prüfen (Format, Größe); als IP '-' angeben")
+    cv.add_argument("url")
+
     gv = sub.add_parser("groupvolume", help="Gruppenlautstärke am Koordinator lesen/setzen")
     gv_sub = gv.add_subparsers(dest="op", required=True)
     gv_sub.add_parser("get")
@@ -286,7 +344,7 @@ def main() -> int:
     try:
         return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport,
                 "nowplaying": cmd_nowplaying, "discover": cmd_discover, "topology": cmd_topology,
-                "groupvolume": cmd_groupvolume}[args.command](args.ip, args)
+                "groupvolume": cmd_groupvolume, "cover": cmd_cover}[args.command](args.ip, args)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         print(f"Speaker unter {args.ip}:{PORT} nicht erreichbar: {e}")
         return 1

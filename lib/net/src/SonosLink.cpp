@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "AVTransport.h"
+#include "AlbumArt.h"
+#include "CoverLoader.h"
 #include "NowPlaying.h"
 #include "RenderingControl.h"
 #include "Soap.h"
@@ -353,6 +355,8 @@ void poll(Link& link) {
     link.synced = true;
     link.nextPollAt = millis() + kPollIntervalMs;
     publishNowPlaying(np, fetchedAt);
+    // Cover: Kandidaten je nach Dienst; unveränderte Kandidaten ignoriert der Lader selbst.
+    CoverLoader::request(sonos::art::candidates(np, link.targetIp));
     post(Event::Type::TransportState, static_cast<int>(state));
     post(Event::Type::SpeakerVolume, volume);
 }

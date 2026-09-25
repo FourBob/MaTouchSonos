@@ -13,6 +13,7 @@
 #include "fixtures_nowplaying.h"
 #include "fixtures_topology.h"
 #include "Topology.h"
+#include "AlbumArt.h"
 #include "NowPlaying.h"
 
 using namespace sonos;
@@ -447,6 +448,81 @@ void test_topology_invisible_coordinator_keeps_room() {
     TEST_ASSERT_EQUAL_STRING("10.0.0.2", groups[0].coordinatorIp.c_str());  // Befehle an den Koordinator
 }
 
+// --- Albumcover: Kandidaten je Dienst ------------------------------------------------
+
+void test_art_queue_track_uses_speaker_proxy() {
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionSpotify, pos));  // Warteschlange, relatives /getaa
+    const auto urls = art::candidates(buildNowPlaying(pos, nullptr), "192.168.178.118");
+    TEST_ASSERT_TRUE(urls.size() >= 1);
+    TEST_ASSERT_EQUAL_STRING("http://192.168.178.118:1400/getaa?s=1&u=x-sonos-spotify%3aspotify%253atrack%253a123",
+                             urls[0].c_str());
+    // zweiter Versuch: Speaker sucht das Cover zur Titel-URI
+    TEST_ASSERT_EQUAL_size_t(2, urls.size());
+    TEST_ASSERT_EQUAL_STRING(
+        "http://192.168.178.118:1400/getaa?s=1&u=x-sonos-spotify%3Aspotify%253atrack%253a123%3Fsid%3D12%26flags%3D8224%26sn%3D1",
+        urls[1].c_str());
+}
+
+void test_art_spotify_connect_uses_https_directly() {
+    PositionInfo pos;
+    MediaInfo media;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionSpotifyConnect, pos));
+    TEST_ASSERT_TRUE(parseMediaInfo(fixtures::kMediaSpotifyConnect, media));
+    const auto urls = art::candidates(buildNowPlaying(pos, &media), "192.168.178.118");
+    TEST_ASSERT_EQUAL_size_t(1, urls.size());  // kein /getaa-Versuch bei x-sonos-vli
+    TEST_ASSERT_EQUAL_STRING("https://i.scdn.co/image/ab67616d0000b273bdf478d2cbd63f86bed753bd", urls[0].c_str());
+}
+
+void test_art_radio_uses_station_logo() {
+    PositionInfo pos;
+    MediaInfo media;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionRadioDlf, pos));
+    TEST_ASSERT_TRUE(parseMediaInfo(fixtures::kMediaRadioDlf, media));
+    const auto urls = art::candidates(buildNowPlaying(pos, &media), "192.168.178.118");
+    TEST_ASSERT_EQUAL_size_t(1, urls.size());
+    TEST_ASSERT_EQUAL_STRING("https://cdn-profiles.tunein.com/s42828/images/logoq.png?t=1", urls[0].c_str());
+}
+
+void test_art_tv_linein_empty_have_no_cover() {
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionTv, pos));
+    TEST_ASSERT_EQUAL_size_t(0, art::candidates(buildNowPlaying(pos, nullptr), "10.0.0.1").size());
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionLineIn, pos));
+    TEST_ASSERT_EQUAL_size_t(0, art::candidates(buildNowPlaying(pos, nullptr), "10.0.0.1").size());
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionEmpty, pos));
+    TEST_ASSERT_EQUAL_size_t(0, art::candidates(buildNowPlaying(pos, nullptr), "10.0.0.1").size());
+}
+
+void test_art_preferred_size_rewrites() {
+    // Apple Music: Größe + WebP -> 480 px JPEG
+    TEST_ASSERT_EQUAL_STRING(
+        "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/ab/cd/ef/abc.jpg/480x480bb.jpg",
+        art::preferredSize("https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/ab/cd/ef/abc.jpg/3000x3000bb.webp").c_str());
+    // Deezer
+    TEST_ASSERT_EQUAL_STRING("https://e-cdns-images.dzcdn.net/images/cover/0123abcd/500x500-000000-80-0-0.jpg",
+        art::preferredSize("https://e-cdns-images.dzcdn.net/images/cover/0123abcd/1000x1000-000000-80-0-0.jpg").c_str());
+    // Unbekannte Dienste bleiben unverändert
+    TEST_ASSERT_EQUAL_STRING("https://i.scdn.co/image/ab67616d0000b273x", art::preferredSize("https://i.scdn.co/image/ab67616d0000b273x").c_str());
+}
+
+void test_art_rewritten_url_keeps_original_as_fallback() {
+    NowPlaying np;
+    np.kind = SourceKind::Track;
+    np.albumArtUri = "https://is1-ssl.mzstatic.com/image/thumb/x/1200x1200bb.jpg";
+    np.trackUri = "x-sonos-http:song%3a1.mp4?sid=204";
+    const auto urls = art::candidates(np, "10.0.0.5");
+    TEST_ASSERT_EQUAL_size_t(3, urls.size());
+    TEST_ASSERT_EQUAL_STRING("https://is1-ssl.mzstatic.com/image/thumb/x/480x480bb.jpg", urls[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("https://is1-ssl.mzstatic.com/image/thumb/x/1200x1200bb.jpg", urls[1].c_str());
+    TEST_ASSERT_EQUAL_STRING("http://10.0.0.5:1400/getaa?s=1&u=x-sonos-http%3Asong%253a1.mp4%3Fsid%3D204", urls[2].c_str());
+}
+
+void test_art_url_encode() {
+    TEST_ASSERT_EQUAL_STRING("a-b_c.d~e", art::urlEncode("a-b_c.d~e").c_str());
+    TEST_ASSERT_EQUAL_STRING("x%3Ay%3Fz%3D1%261%20%C3%A4", art::urlEncode("x:y?z=1&1 \xC3\xA4").c_str());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_xml_find_element_ignores_namespace_prefix);
@@ -497,5 +573,12 @@ int main(int, char**) {
     RUN_TEST(test_topology_find_group_by_name);
     RUN_TEST(test_topology_request_matches_recorded);
     RUN_TEST(test_topology_invisible_coordinator_keeps_room);
+    RUN_TEST(test_art_queue_track_uses_speaker_proxy);
+    RUN_TEST(test_art_spotify_connect_uses_https_directly);
+    RUN_TEST(test_art_radio_uses_station_logo);
+    RUN_TEST(test_art_tv_linein_empty_have_no_cover);
+    RUN_TEST(test_art_preferred_size_rewrites);
+    RUN_TEST(test_art_rewritten_url_keeps_original_as_fallback);
+    RUN_TEST(test_art_url_encode);
     return UNITY_END();
 }

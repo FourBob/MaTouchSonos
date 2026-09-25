@@ -28,10 +28,11 @@
 │  VolumeController             │  AVTransport             │
 │  PlaybackController           │  NowPlaying (DIDL-Lite)  │
 │  ProgressTracker              │  Topology + SSDP         │
-│  ModeController (Menü/Spulen) │                          │
+│  ModeController (Menü/Spulen) │  AlbumArt (Cover-Quellen)│
+│  ImageOps (Zuschnitt, Dimmen) │                          │
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
-│ lib/net/        WLAN, HTTP, SSDP (ab Schritt 1/5)         │
+│ lib/net/        WLAN, HTTP, SSDP, CoverLoader             │
 │ lib/hal/        Display+LVGL, Touch, Drehring (PCNT), Taste│
 ├──────────────────────────────────────────────────────────┤
 │ Arduino-ESP32 2.0.x · Arduino_GFX 1.3.8 · LVGL 8.3.11     │
@@ -146,6 +147,34 @@ Abfragen alle 1,5 s an den Koordinator · Topologie alle 30 s neu · nach 3 Fehl
 - **Stereopaare, Sub, Surrounds und Boost** werden ausgeblendet. Das ist an einer echten Anlage mit
   13 Geräten getestet (`test/test_sonos_core/fixtures_topology.h`, anonymisiert).
 - Gemerkt wird die **UUID**, nicht die IP. IP-Wechsel nach einem Router-Neustart sind so kein Problem.
+
+## Albumcover (ab Schritt 6)
+
+Jeder Musikdienst liefert Cover anders. `sonos::art::candidates()` (sonos_core, getestet mit echten
+Aufzeichnungen) erstellt je Titel eine **Liste von Bildadressen**, die der Reihe nach probiert werden:
+
+| Quelle | Adresse aus den Metadaten | 1. Versuch | weitere Versuche |
+|---|---|---|---|
+| Warteschlange (Spotify, Apple Music, Amazon, Bibliothek …) | relativ `/getaa?…` | Bild-Proxy des Speakers (HTTP, Port 1400) | Speaker sucht Cover zur Titel-URI |
+| Spotify Connect (`x-sonos-vli:`) | `https://i.scdn.co/…` | direkt per HTTPS (640 px JPEG) | – |
+| Apple Music / Deezer mit absoluter URL | `…/3000x3000bb.webp`, `…/1000x1000-…` | auf ~480 px (JPEG) umgeschrieben | Originaladresse, dann Speaker-Suche |
+| Radio (TuneIn u. a.) | Senderlogo aus GetMediaInfo | direkt (HTTPS, oft PNG) | – |
+| TV, Line-In, leer | – | kein Cover | – |
+
+```
+SonosLink (neuer Titel) ──Kandidaten──▶ CoverLoader-Task (Kern 0, niedrige Priorität)
+                                          herunterladen (HTTP/HTTPS, ≤ 700 KB, chunked-fähig)
+                                          JPEG (JPEGDEC, ggf. 1/2–1/8 verkleinert) oder PNG (PNGdec)
+                                          auf 480×480 zuschneiden (bilinear) und auf ~41 % abdunkeln
+                                          in den freien der beiden PSRAM-Puffer
+UI ◀── takeCover() / acknowledge() ──────  (Doppelpuffer: überschrieben wird erst nach Bestätigung)
+```
+
+- Das fertige Bild liegt in Displaygröße vor. Beim Zeichnen skaliert LVGL nichts, das Cover
+  kostet also keine Bildrate.
+- HTTPS ohne Zertifikatsprüfung: Es werden nur öffentliche Bilder geladen, keine Zugangsdaten gesendet.
+- Grenzen: WebP und GIF werden nicht unterstützt, progressive JPEGs nur als unscharfe Vorschau (1/8).
+  Deshalb gibt es mehrere Kandidaten, und `sonos_probe.py cover` zeigt vorab, was ein Dienst liefert.
 
 ## Designentscheidungen
 

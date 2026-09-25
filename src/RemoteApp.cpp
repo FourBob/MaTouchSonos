@@ -1,4 +1,4 @@
-// Fernbedienung – Stand Schritt 5: Now Playing, Lautstärke, Play/Pause, Titel wechseln,
+// Fernbedienung – Stand Schritt 6: Now Playing mit Cover, Lautstärke, Play/Pause, Titel wechseln,
 // Ringmenü, Spulen und Raumwahl (Anlage wird automatisch gefunden).
 //
 // Ablauf pro Schleifendurchlauf (Kern 1):
@@ -25,6 +25,7 @@
 #include "App.h"
 #include "ButtonDetector.h"
 #include "Diagnostics.h"
+#include "CoverLoader.h"
 #include "Display.h"
 #include "Input.h"
 #include "ModeController.h"
@@ -64,6 +65,8 @@ net::RoomsInfo rooms;            // Räume/Gruppen der Anlage
 uint32_t roomsVersion = 0;
 char roomName[56] = "";          // aktiver Raum, steht in der Statuszeile
 Preferences prefs;               // NVS: zuletzt gewählter Raum (Schlüssel "room")
+
+uint32_t coverVersion = 0;       // zuletzt angezeigtes Cover
 
 net::NowPlayingInfo nowPlaying;  // letzte Momentaufnahme
 bool hasNowPlaying = false;      // false nach Verbindungsverlust, bis eine neue Abfrage eintrifft
@@ -361,7 +364,7 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
 }  // namespace
 
 void setup() {
-    diag::logBootInfo("Fernbedienung (Schritt 5)");
+    diag::logBootInfo("Fernbedienung (Schritt 6)");
 
     if (!hal::Display::begin()) {
         Serial.println(F("FEHLER: Display-Initialisierung fehlgeschlagen"));
@@ -382,6 +385,7 @@ void setup() {
                   std::strlen(SONOS_ROOM) ? SONOS_ROOM : "(keiner)",
                   savedRoom.length() ? savedRoom.c_str() : "(keiner)",
                   std::strlen(SONOS_IP) ? SONOS_IP : "(keine, nur SSDP)");
+    net::CoverLoader::begin();
     net::SonosLink::begin(WIFI_SSID, WIFI_PASS, SONOS_ROOM, savedRoom.c_str(), SONOS_IP);
 }
 
@@ -428,6 +432,13 @@ void loop() {
         nowPlayingVersion = nowPlaying.version;
         hasNowPlaying = true;
         showNowPlaying();
+    }
+
+    net::CoverFrame cover;
+    if (net::CoverLoader::takeCover(coverVersion, cover)) {
+        coverVersion = cover.version;
+        screen.setCover(cover.pixels);
+        net::CoverLoader::acknowledge(cover.version);  // alter Puffer darf überschrieben werden
     }
 
     updateProgress(now);

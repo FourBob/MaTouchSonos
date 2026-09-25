@@ -316,3 +316,33 @@ python3 tools/sonos_probe.py <IP> --save probe-seek transport seek 0:01:30
 **Robustheit**
 - [ ] Router neu starten: Das Gerät findet die Anlage wieder, der Raum bleibt derselbe
 - [ ] 10 Minuten laufen lassen: `heap_frei` stabil, kein Neustart
+
+---
+
+## Checkliste Schritt 6 – Albumcover
+
+Jeder Dienst liefert Cover anders, deshalb bitte **mit allen Quellen testen, die du nutzt**.
+
+**T3 zuerst**, für jede Quelle: in der Sonos-App starten, dann
+```bash
+python3 tools/sonos_probe.py <IP> nowplaying          # zeigt die Zeile „Cover: …“
+python3 tools/sonos_probe.py - cover '<Cover-Adresse>'  # Format, Größe, darstellbar?
+```
+Schick mir je Quelle die beiden Ausgaben, dann decken die Tests auch diese Dienste ab.
+
+**Am Gerät** (`pio run -e matouch -t upload`), je Quelle:
+
+| Quelle | Cover erscheint? | Log `COVER ok: …` (Zeiten) | Bemerkung |
+|---|---|---|---|
+| Spotify über die Sonos-App (Warteschlange) | | | |
+| Spotify Connect (aus der Spotify-App) | | | |
+| Radio (TuneIn) | | | Senderlogo |
+| Weitere Dienste (Apple Music, Amazon, Deezer, Bibliothek …) | | | |
+| TV / Line-In | kein Cover erwartet | | |
+
+- [ ] Das Cover füllt den runden Hintergrund, Titel und Interpret bleiben gut lesbar
+- [ ] Beim Titelwechsel erscheint das neue Cover nach kurzer Zeit. Die Bedienung (Ring, Taste, Wischen)
+      reagiert währenddessen normal
+- [ ] Menü, Raumwahl und Lautstärke-Einblendung liegen weiterhin sauber darüber
+- [ ] 30 Titelwechsel hintereinander (Wischen): kein Absturz, `heap_frei` im Log bleibt stabil
+- [ ] Log bei fehlenden Covern: `COVER … Download fehlgeschlagen/nicht darstellbar: <Grund>`. Bitte mitschicken

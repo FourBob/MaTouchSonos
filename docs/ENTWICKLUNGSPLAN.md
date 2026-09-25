@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–5 ✅ abgeschlossen. Als Nächstes: Schritt 6 (Albumcover).
+> **Stand:** Schritt 0–5 ✅ abgeschlossen. Schritt 6 umgesetzt, wartet auf den Geräte-Test.
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -246,7 +246,7 @@ wechselt Now Playing und Lautstärke auf diesen Raum. Nach Neustart ist der letz
 
 ---
 
-### Schritt 6 – Albumcover
+### Schritt 6 – Albumcover 🧪
 
 **Ziel:** Now Playing zeigt das Cover als runden Hintergrund.
 

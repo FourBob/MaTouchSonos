@@ -22,6 +22,11 @@ constexpr uint32_t kOverlayMs = 2000;
 
 NowPlayingScreen::SwipeHandler swipeHandler = nullptr;
 
+// Cover (unterste Ebene) – zwei Beschreibungen, damit LVGL beim Wechsel nicht aus dem Cache zeichnet
+lv_obj_t* coverImg;
+lv_img_dsc_t coverDsc[2];
+int coverSlot = 0;
+
 // Now Playing
 lv_obj_t* progressArc;
 lv_obj_t* stateLabel;
@@ -131,6 +136,20 @@ void NowPlayingScreen::create(SwipeHandler onSwipe) {
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(scr, onGesture, LV_EVENT_GESTURE, nullptr);
+
+    // --- Cover: als Erstes angelegt, damit alles andere darüber liegt ------------
+    coverImg = lv_img_create(scr);
+    lv_obj_center(coverImg);
+    lv_obj_clear_flag(coverImg, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(coverImg, LV_OBJ_FLAG_HIDDEN);
+    for (auto& d : coverDsc) {
+        d.header.always_zero = 0;
+        d.header.cf = LV_IMG_CF_TRUE_COLOR;
+        d.header.w = 480;
+        d.header.h = 480;
+        d.data_size = 480 * 480 * LV_COLOR_SIZE / 8;
+        d.data = nullptr;
+    }
 
     // --- Now Playing ---------------------------------------------------------
     progressArc = makeArc(scr, 464, 8, 270, 360, 1000);
@@ -268,6 +287,18 @@ void NowPlayingScreen::setPlayState(app::PlayState state) {
         case app::PlayState::Unknown: setTextIfChanged(stateLabel, ""); break;
     }
     applyPlayStateColors();
+}
+
+void NowPlayingScreen::setCover(const uint16_t* pixels) {
+    if (!pixels) {
+        lv_obj_add_flag(coverImg, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    coverSlot ^= 1;
+    coverDsc[coverSlot].data = reinterpret_cast<const uint8_t*>(pixels);
+    lv_img_cache_invalidate_src(&coverDsc[coverSlot]);
+    lv_img_set_src(coverImg, &coverDsc[coverSlot]);
+    lv_obj_clear_flag(coverImg, LV_OBJ_FLAG_HIDDEN);
 }
 
 void NowPlayingScreen::setVolume(int volume, bool known) {

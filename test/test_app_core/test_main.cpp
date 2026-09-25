@@ -7,6 +7,7 @@
 
 #include "ButtonDetector.h"
 #include "DetentTracker.h"
+#include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
 #include "ProgressTracker.h"
@@ -547,6 +548,69 @@ void test_mode_rooms_not_available_without_rooms() {
     TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Rooms), a.value);
 }
 
+// --- ImageOps (Albumcover) --------------------------------------------------------
+
+namespace img = app::img;
+
+void test_img_detect_format() {
+    const uint8_t jpg[] = {0xFF, 0xD8, 0xFF, 0xE0, 0x00};
+    const uint8_t png[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    const uint8_t gif[] = {'G', 'I', 'F', '8', '9', 'a'};
+    TEST_ASSERT_TRUE(img::detectFormat(jpg, sizeof(jpg)) == img::Format::Jpeg);
+    TEST_ASSERT_TRUE(img::detectFormat(png, sizeof(png)) == img::Format::Png);
+    TEST_ASSERT_TRUE(img::detectFormat(gif, sizeof(gif)) == img::Format::Unknown);
+    TEST_ASSERT_TRUE(img::detectFormat(jpg, 2) == img::Format::Unknown);
+}
+
+void test_img_choose_jpeg_scale() {
+    TEST_ASSERT_EQUAL_INT(1, img::chooseJpegScale(640, 640, 480));   // Spotify 640 px: voll dekodieren
+    TEST_ASSERT_EQUAL_INT(2, img::chooseJpegScale(1200, 1200, 480)); // 1200 -> 600
+    TEST_ASSERT_EQUAL_INT(2, img::chooseJpegScale(1920, 1080, 480)); // kürzere Seite zählt
+    TEST_ASSERT_EQUAL_INT(8, img::chooseJpegScale(4000, 4000, 480));
+    TEST_ASSERT_EQUAL_INT(1, img::chooseJpegScale(300, 300, 480));   // kleiner als Ziel: nicht verkleinern
+}
+
+void test_img_cover_resize_uniform_color_stays() {
+    static uint16_t src[64 * 32];
+    static uint16_t dst[48 * 48];
+    const uint16_t color = img::pack565(20, 40, 10);
+    for (auto& p : src) p = color;
+    img::coverResize(src, 64, 32, dst, 48, 48);
+    for (auto p : dst) TEST_ASSERT_EQUAL_HEX16(color, p);
+}
+
+void test_img_cover_resize_crops_center_of_wide_image() {
+    // 30x10: links rot, Mitte grün, rechts blau -> quadratisches Ziel zeigt nur die Mitte (grün)
+    static uint16_t src[30 * 10];
+    for (int y = 0; y < 10; ++y)
+        for (int x = 0; x < 30; ++x)
+            src[y * 30 + x] = x < 10 ? img::pack565(31, 0, 0) : (x < 20 ? img::pack565(0, 63, 0) : img::pack565(0, 0, 31));
+    static uint16_t dst[20 * 20];
+    img::coverResize(src, 30, 10, dst, 20, 20);
+    TEST_ASSERT_EQUAL_HEX16(img::pack565(0, 63, 0), dst[10 * 20 + 10]);
+    TEST_ASSERT_EQUAL_HEX16(img::pack565(0, 63, 0), dst[0]);
+    TEST_ASSERT_EQUAL_HEX16(img::pack565(0, 63, 0), dst[20 * 20 - 1]);
+}
+
+void test_img_cover_resize_upscale_keeps_corners() {
+    // 2x2 mit vier Farben -> 8x8: Ecken behalten ihre Farbe
+    const uint16_t a = img::pack565(31, 0, 0), b = img::pack565(0, 63, 0), c = img::pack565(0, 0, 31), d = img::pack565(31, 63, 31);
+    const uint16_t src[4] = {a, b, c, d};
+    uint16_t dst[64];
+    img::coverResize(src, 2, 2, dst, 8, 8);
+    TEST_ASSERT_EQUAL_HEX16(a, dst[0]);
+    TEST_ASSERT_EQUAL_HEX16(b, dst[7]);
+    TEST_ASSERT_EQUAL_HEX16(c, dst[56]);
+    TEST_ASSERT_EQUAL_HEX16(d, dst[63]);
+}
+
+void test_img_darken() {
+    uint16_t px[2] = {img::pack565(31, 63, 31), 0};
+    img::darken(px, 2, 128);  // halbe Helligkeit
+    TEST_ASSERT_EQUAL_HEX16(img::pack565(15, 31, 15), px[0]);
+    TEST_ASSERT_EQUAL_HEX16(0, px[1]);
+}
+
 // --- ButtonDetector ---------------------------------------------------------
 
 // Hilfsfunktion: hält einen Pegel über eine Zeitspanne und sammelt Ereignisse.
@@ -665,6 +729,12 @@ int main(int, char**) {
     RUN_TEST(test_mode_room_picker_moves_clamped_and_selects);
     RUN_TEST(test_mode_room_picker_cancel_and_timeout);
     RUN_TEST(test_mode_rooms_not_available_without_rooms);
+    RUN_TEST(test_img_detect_format);
+    RUN_TEST(test_img_choose_jpeg_scale);
+    RUN_TEST(test_img_cover_resize_uniform_color_stays);
+    RUN_TEST(test_img_cover_resize_crops_center_of_wide_image);
+    RUN_TEST(test_img_cover_resize_upscale_keeps_corners);
+    RUN_TEST(test_img_darken);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

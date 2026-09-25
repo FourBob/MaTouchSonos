@@ -37,6 +37,7 @@ struct NowPlaying {
     std::string subtitle;     ///< Interpret bzw. Sendername
     std::string album;
     std::string albumArtUri;
+    std::string trackUri;     ///< für die Cover-Suche über den Speaker (AlbumArt.h)
     int durationSec = -1;     ///< > 0 nur bei Titeln mit bekannter Länge
     int positionSec = -1;
 
