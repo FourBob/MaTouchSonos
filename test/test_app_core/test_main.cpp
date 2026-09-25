@@ -401,17 +401,18 @@ void test_mode_long_press_opens_and_closes_menu() {
 void test_mode_menu_selection_skips_disabled_and_wraps() {
     ModeController m;
     m.onLongPress(0);  // Spulen
-    // Räume und Favoriten sind noch deaktiviert -> nächster ist „Schließen“, dann wieder „Spulen“
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 10, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 20, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 30, trackCtx()).value);
+    // Favoriten sind noch deaktiviert: Spulen -> Räume -> Schließen -> Spulen
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Rooms), m.onDetents(+1, 10, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 20, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 30, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 40, trackCtx()).value);
     TEST_ASSERT_TRUE(m.mode() == Mode::Menu);  // Drehen im Menü ändert keine Lautstärke
 }
 
 void test_mode_menu_close_item() {
     ModeController m;
     m.onLongPress(0);
-    m.onDetents(+1, 10, trackCtx());  // Schließen
+    m.onDetents(-1, 10, trackCtx());  // rückwärts von Spulen: Schließen
     TEST_ASSERT_TRUE(m.onShortPress(20, trackCtx()).type == Act::MenuClosed);
     TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
 }
@@ -491,6 +492,59 @@ void test_mode_input_resets_timeout() {
     m.onDetents(+1, 9000, trackCtx());
     TEST_ASSERT_TRUE(m.tick(15000).type == Act::None);  // erst 10 s nach der letzten Eingabe
     TEST_ASSERT_TRUE(m.tick(19000).type == Act::MenuClosed);
+}
+
+static ModeController::Context roomsCtx(int count, int current) {
+    ModeController::Context c = trackCtx();
+    c.roomCount = count;
+    c.currentRoom = current;
+    return c;
+}
+
+void test_mode_room_picker_opens_at_current_room() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onDetents(+1, 10, roomsCtx(7, 3));  // Räume
+    auto a = m.onShortPress(20, roomsCtx(7, 3));
+    TEST_ASSERT_TRUE(a.type == Act::RoomPickerOpened);
+    TEST_ASSERT_EQUAL_INT(3, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::RoomPicker);
+}
+
+void test_mode_room_picker_moves_clamped_and_selects() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onDetents(+1, 10, roomsCtx(7, 5));
+    m.onShortPress(20, roomsCtx(7, 5));
+    TEST_ASSERT_EQUAL_INT(6, m.onDetents(+1, 1000, roomsCtx(7, 5)).value);
+    TEST_ASSERT_TRUE(m.onDetents(+3, 2000, roomsCtx(7, 5)).type == Act::None);  // Ende erreicht
+    TEST_ASSERT_EQUAL_INT(0, m.onDetents(-20, 3000, roomsCtx(7, 5)).value);
+    auto a = m.onShortPress(4000, roomsCtx(7, 5));
+    TEST_ASSERT_TRUE(a.type == Act::RoomSelected);
+    TEST_ASSERT_EQUAL_INT(0, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_room_picker_cancel_and_timeout() {
+    ModeController m(10000);
+    m.onLongPress(0);
+    m.onDetents(+1, 10, roomsCtx(3, 0));
+    m.onShortPress(20, roomsCtx(3, 0));
+    TEST_ASSERT_TRUE(m.onLongPress(100).type == Act::RoomPickerCancelled);
+    m.onLongPress(200);
+    m.onDetents(+1, 210, roomsCtx(3, 0));
+    m.onShortPress(220, roomsCtx(3, 0));
+    TEST_ASSERT_TRUE(m.tick(10220).type == Act::RoomPickerCancelled);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_rooms_not_available_without_rooms() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onDetents(+1, 10, roomsCtx(0, 0));
+    auto a = m.onShortPress(20, roomsCtx(0, 0));
+    TEST_ASSERT_TRUE(a.type == Act::NotAvailable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Rooms), a.value);
 }
 
 // --- ButtonDetector ---------------------------------------------------------
@@ -607,6 +661,10 @@ int main(int, char**) {
     RUN_TEST(test_mode_scrub_cancel_by_long_press_and_timeout);
     RUN_TEST(test_mode_scrub_not_available_for_radio);
     RUN_TEST(test_mode_input_resets_timeout);
+    RUN_TEST(test_mode_room_picker_opens_at_current_room);
+    RUN_TEST(test_mode_room_picker_moves_clamped_and_selects);
+    RUN_TEST(test_mode_room_picker_cancel_and_timeout);
+    RUN_TEST(test_mode_rooms_not_available_without_rooms);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

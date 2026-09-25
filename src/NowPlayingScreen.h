@@ -5,7 +5,7 @@
 #include "PlaybackController.h"
 
 /**
- * Now-Playing-Bildschirm (Stand Schritt 4).
+ * Now-Playing-Bildschirm (Stand Schritt 5).
  *
  *        ┌──── Fortschrittsring (360°, beginnt oben) ────┐
  *        │              ▶ / ❚❚  (Zustand)                │
@@ -55,6 +55,14 @@ public:
     /** Spulen-Ansicht zeigen bzw. aktualisieren. Solange sie aktiv ist, ignoriert setProgress den Ring. */
     void showScrub(int targetSec, int durationSec);
     void hideScrub();
+
+    /**
+     * Raumwahl als Drehrad: markierter Raum groß in der Mitte, Nachbarn darüber/darunter.
+     * @param names   Anzeigenamen aller Räume
+     * @param active  aktuell aktiver Raum (bekommt ein Häkchen)
+     */
+    void showRoomPicker(const char* const* names, int count, int index, int active);
+    void hideRoomPicker();
 
     /** Regelmäßig aufrufen (blendet die Lautstärke nach Ablauf aus). */
     void tick(uint32_t nowMs);

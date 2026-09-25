@@ -131,6 +131,24 @@ def cmd_volume(ip: str, args) -> int:
     return 0 if ok else 1
 
 
+def cmd_groupvolume(ip: str, args) -> int:
+    """Gruppenlautstärke am Koordinator (GroupRenderingControl) – nur sinnvoll, wenn Räume gruppiert sind."""
+    SERVICES["GroupRenderingControl"] = ("/MediaRenderer/GroupRenderingControl/Control",
+                                         "urn:schemas-upnp-org:service:GroupRenderingControl:1")
+    req, status, resp, ms = soap(ip, "GroupRenderingControl", "SnapshotGroupVolume", [("InstanceID", "0")])
+    report("SnapshotGroupVolume", req, status, resp, ms, args.save)
+    if args.op == "get":
+        req, status, resp, ms = soap(ip, "GroupRenderingControl", "GetGroupVolume", [("InstanceID", "0")])
+        ok = report("GetGroupVolume", req, status, resp, ms, args.save)
+        if ok:
+            print(f"  Gruppenlautstärke: {element(resp, 'CurrentVolume')}")
+        return 0 if ok else 1
+    value = max(0, min(100, args.value))
+    req, status, resp, ms = soap(ip, "GroupRenderingControl", "SetGroupVolume",
+                                 [("InstanceID", "0"), ("DesiredVolume", str(value))])
+    return 0 if report("SetGroupVolume", req, status, resp, ms, args.save) else 1
+
+
 def cmd_transport(ip: str, args) -> int:
     actions = {
         "info": ("GetTransportInfo", [("InstanceID", "0")]),
@@ -258,10 +276,17 @@ def main() -> int:
     sub.add_parser("discover", help="Sonos-Speaker im Netz suchen (SSDP); als IP '-' angeben")
     sub.add_parser("topology", help="Räume und Gruppen (GetZoneGroupState)")
 
+    gv = sub.add_parser("groupvolume", help="Gruppenlautstärke am Koordinator lesen/setzen")
+    gv_sub = gv.add_subparsers(dest="op", required=True)
+    gv_sub.add_parser("get")
+    gvs = gv_sub.add_parser("set")
+    gvs.add_argument("value", type=int, help="0..100")
+
     args = p.parse_args()
     try:
         return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport,
-                "nowplaying": cmd_nowplaying, "discover": cmd_discover, "topology": cmd_topology}[args.command](args.ip, args)
+                "nowplaying": cmd_nowplaying, "discover": cmd_discover, "topology": cmd_topology,
+                "groupvolume": cmd_groupvolume}[args.command](args.ip, args)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         print(f"Speaker unter {args.ip}:{PORT} nicht erreichbar: {e}")
         return 1

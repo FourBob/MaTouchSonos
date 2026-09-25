@@ -24,10 +24,10 @@
 │ lib/app_core/   Bedienlogik   │ lib/sonos_core/          │
 │  DetentTracker                │  SOAP-Envelopes, XML-    │
 │                               │  und DIDL-Parser,        │
-│  ButtonDetector               │  RenderingControl        │
+│  ButtonDetector               │  RenderingControl, Group…│
 │  VolumeController             │  AVTransport             │
 │  PlaybackController           │  NowPlaying (DIDL-Lite)  │
-│  ProgressTracker              │  (Topologie ab Schritt 5)│
+│  ProgressTracker              │  Topology + SSDP         │
 │  ModeController (Menü/Spulen) │                          │
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
@@ -79,8 +79,9 @@ Bedienlogik mit Timeouts und Sonderfällen auf dem PC testbar.
 | Normal | Lautstärke           | Play/Pause           | Menü öffnen  |
 | Menü   | Eintrag wählen       | Eintrag ausführen    | schließen    |
 | Spulen | Zielposition ändern  | dorthin springen     | abbrechen    |
+| Raum   | Raum wählen          | Raum übernehmen      | abbrechen    |
 
-Menü und Spulen schließen sich nach 10 s ohne Eingabe. Noch nicht verfügbare Menüpunkte (Räume,
+Menü, Spulen und Raumwahl schließen sich nach 10 s ohne Eingabe. Noch nicht verfügbare Menüpunkte (Räume,
 Favoriten) werden angezeigt, aber beim Drehen übersprungen.
 
 ## Nebenläufigkeit (ab Schritt 1)
@@ -120,6 +121,32 @@ Anzeige ◀── takeNowPlaying() ◀── [Momentaufnahme, Mutex] ◀── G
 - Nach wiederholten Fehlern gilt die Lautstärke als unbekannt (Anzeige „–“, Drehen gesperrt), bis
   GetVolume wieder eine Antwort liefert. So zeigt das Display nie einen Wert an, den der Speaker nicht hat.
 
+## Anlage finden und Raum wählen (ab Schritt 5)
+
+```
+WLAN verbunden
+   │
+   ▼
+Anlage suchen ──▶ bekannte IPs zuerst (aktiver Raum, SONOS_IP, alle zuletzt gesehenen Speaker)
+   │              sonst SSDP: M-SEARCH an 239.255.255.250:1900, 1,5 s auf Antworten warten
+   ▼
+GetZoneGroupState (an irgendeinen Speaker) ──▶ Gruppen, Koordinatoren, Namen
+   │
+   ▼
+Raum auflösen: gewählte UUID (NVS) → Gruppe, in der sie steckt → deren Koordinator-IP
+   │            (sonst die Gruppe von SONOS_IP, sonst die erste alphabetisch)
+   ▼
+Abfragen alle 1,5 s an den Koordinator · Topologie alle 30 s neu · nach 3 Fehlschlägen neu suchen
+```
+
+- **Befehle gehen immer an den Koordinator.** Tritt der gewählte Raum einer Gruppe bei, folgt die
+  Fernbedienung automatisch und zeigt z. B. „Küche + 1“.
+- **Lautstärke:** Einzelraum über `RenderingControl`, Gruppe über `GroupRenderingControl`
+  (mit `SnapshotGroupVolume` vor dem Lesen, damit Sonos Änderungen proportional verteilt).
+- **Stereopaare, Sub, Surrounds und Boost** werden ausgeblendet. Das ist an einer echten Anlage mit
+  13 Geräten getestet (`test/test_sonos_core/fixtures_topology.h`, anonymisiert).
+- Gemerkt wird die **UUID**, nicht die IP. IP-Wechsel nach einem Router-Neustart sind so kein Problem.
+
 ## Designentscheidungen
 
 | Entscheidung | Begründung |
@@ -128,7 +155,7 @@ Anzeige ◀── takeNowPlaying() ◀── [Momentaufnahme, Mutex] ◀── G
 | Arduino_GFX 1.3.8 fest gepinnt | Mit genau dieser Version hat Makerfabs das Panel getestet. Neuere Versionen haben die API der RGB-Panels geändert. |
 | LVGL 8.3 statt 9.x | Stabil, gut dokumentiert, Makerfabs nutzt 8.3. Ein Umstieg ist später möglich. |
 | Ein Thread für die UI | LVGL ist nicht threadsicher. Alle `lv_*`-Aufrufe laufen in `loop()`, das Netzwerk bekommt später eine eigene Task mit Nachrichten-Queue. |
-| WLAN fest im Code (`secrets.h`) | Wunsch des Projekts: einfach und ohne Setup-Portal. Die Datei ist per `.gitignore` geschützt. |
+| WLAN fest im Code (`secrets.h`) | Wunsch des Projekts: einfach und ohne Setup-Portal. Die Datei ist per `.gitignore` geschützt. Die Speaker-IP ist seit Schritt 5 optional. |
 | Schrift Inter (`src/fonts/`) | Klar und sehr gut lesbar, besonders bei Zahlen. Die eingebauten LVGL-Schriften haben nur ASCII. Die eigenen enthalten Latin-1 (Umlaute, ß) und die LVGL-Symbole. Medium für Text, SemiBold für Überschriften, eine 96-px-Ziffernschrift für die Lautstärke. Neu erzeugen mit `tools/gen_fonts.sh`. |
 | Zwei Firmware-Varianten | `matouch` (Fernbedienung) und `matouch_hwtest` (Hardware-Test) teilen sich `hal` und `app_core`. So bleibt der Hardware-Test jederzeit verfügbar. |
 | C++17 | Für `constexpr`/`inline`-Member und bessere Typsicherheit. Wird in `platformio.ini` gesetzt. |

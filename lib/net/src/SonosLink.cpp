@@ -3,43 +3,58 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "AVTransport.h"
 #include "NowPlaying.h"
 #include "RenderingControl.h"
 #include "Soap.h"
+#include "Topology.h"
 
 namespace net {
 namespace {
 
 constexpr uint16_t kSonosPort = 1400;
 constexpr uint32_t kHttpConnectTimeoutMs = 1000;
-constexpr uint16_t kHttpTimeoutMs = 1200;      // Speaker antwortet normal in 30–60 ms
-constexpr uint32_t kPollIntervalMs = 1500;     // Zustand, Titel, Lautstärke abfragen
-constexpr uint32_t kPollAfterCommandMs = 400;  // nach einem Befehl schnell bestätigen
-constexpr uint32_t kQuickRetryMs = 500;        // nach einem einzelnen Aussetzer
-constexpr uint32_t kRetryIntervalMs = 5000;    // wenn der Speaker als nicht erreichbar gilt
-constexpr int kFailuresBeforeError = 3;        // so viele Aussetzer in Folge bis zur Fehlermeldung
+constexpr uint16_t kHttpTimeoutMs = 1200;        // Speaker antwortet normal in 30–60 ms
+constexpr uint32_t kPollIntervalMs = 1500;       // Zustand, Titel, Lautstärke abfragen
+constexpr uint32_t kPollAfterCommandMs = 400;    // nach einem Befehl schnell bestätigen
+constexpr uint32_t kQuickRetryMs = 500;          // nach einem einzelnen Aussetzer
+constexpr uint32_t kRetryIntervalMs = 5000;      // wenn der Speaker als nicht erreichbar gilt
+constexpr uint32_t kTopologyIntervalMs = 30000;  // Räume/Gruppen neu lesen
+constexpr uint32_t kDiscoveryRetryMs = 5000;     // Anlage nicht gefunden: erneut suchen
+constexpr uint32_t kSsdpWaitMs = 1500;
+constexpr uint16_t kSsdpLocalPort = 50505;
+constexpr int kFailuresBeforeError = 3;          // so viele Aussetzer in Folge bis zur Fehlermeldung
 constexpr uint32_t kWifiCheckMs = 500;
 constexpr int kUpnpTransitionNotAvailable = 701;
 
 const char* gSsid = nullptr;
 const char* gPassword = nullptr;
-const char* gSpeakerIp = nullptr;
-
-QueueHandle_t gVolumeQueue = nullptr;     // int, Länge 1 (xQueueOverwrite)
-QueueHandle_t gTransportQueue = nullptr;  // Command, Länge 4
+std::string gInitialRoomUuid;
+std::string gFallbackIp;
 
 struct Command {
     Transport type;
     int value;  // Seek: Zielposition in Sekunden
 };
+struct RoomRequest {
+    char uuid[40];
+};
+
+QueueHandle_t gVolumeQueue = nullptr;     // int, Länge 1 (xQueueOverwrite)
+QueueHandle_t gTransportQueue = nullptr;  // Command, Länge 4
+QueueHandle_t gRoomQueue = nullptr;       // RoomRequest, Länge 1 (xQueueOverwrite)
 QueueHandle_t gEventQueue = nullptr;      // Event, Länge 16
 
 SemaphoreHandle_t gNowPlayingMutex = nullptr;
 NowPlayingInfo gNowPlaying;  // geschützt durch gNowPlayingMutex
+SemaphoreHandle_t gRoomsMutex = nullptr;
+RoomsInfo gRooms;            // geschützt durch gRoomsMutex
 
 void post(Event::Type type, int value = 0, const char* text = "") {
     Event e{};
@@ -51,14 +66,18 @@ void post(Event::Type type, int value = 0, const char* text = "") {
     }
 }
 
-/** Führt eine SOAP-Anfrage aus. body enthält die Antwort (auch im Fehlerfall). */
-sonos::SoapResult call(const sonos::SoapRequest& req, std::string& body) {
+// ---------------------------------------------------------------------------
+// HTTP/SOAP
+// ---------------------------------------------------------------------------
+
+/** Führt eine SOAP-Anfrage an `ip` aus. body enthält die Antwort (auch im Fehlerfall). */
+sonos::SoapResult call(const std::string& ip, const sonos::SoapRequest& req, std::string& body) {
     HTTPClient http;
     http.setConnectTimeout(kHttpConnectTimeoutMs);
     http.setTimeout(kHttpTimeoutMs);
     http.setReuse(false);
 
-    const String url = String("http://") + gSpeakerIp + ":" + kSonosPort + req.path.c_str();
+    const String url = String("http://") + ip.c_str() + ":" + kSonosPort + req.path.c_str();
     if (!http.begin(url)) {
         body.clear();
         return sonos::evaluateResponse(-1, body);
@@ -77,17 +96,95 @@ sonos::SoapResult call(const sonos::SoapRequest& req, std::string& body) {
 }
 
 /** Wie call(), aber bei einem Verbindungsfehler (Aussetzer) sofort ein zweites Mal. */
-sonos::SoapResult callWithRetry(const sonos::SoapRequest& req, std::string& body) {
-    sonos::SoapResult r = call(req, body);
+sonos::SoapResult callWithRetry(const std::string& ip, const sonos::SoapRequest& req, std::string& body) {
+    sonos::SoapResult r = call(ip, req, body);
     if (!r.ok && r.httpStatus <= 0) {
         Serial.printf("SONOS Aussetzer (%s) – wiederhole\n", r.error.c_str());
-        r = call(req, body);
+        r = call(ip, req, body);
     }
     return r;
 }
 
-/** Zustand der Verbindung zum Speaker innerhalb der Task. */
+// ---------------------------------------------------------------------------
+// Suche (SSDP) und Topologie
+// ---------------------------------------------------------------------------
+
+/** SSDP-Suche: IP-Adressen aller antwortenden Sonos-Speaker. */
+std::vector<std::string> ssdpSearch() {
+    std::vector<std::string> ips;
+    WiFiUDP udp;
+    if (!udp.begin(kSsdpLocalPort)) return ips;
+
+    const std::string request = sonos::ssdp::buildSearchRequest();
+    const IPAddress multicast(239, 255, 255, 250);
+    for (int i = 0; i < 2; ++i) {  // UDP kann verloren gehen: zweimal senden
+        udp.beginPacket(multicast, sonos::ssdp::kPort);
+        udp.write(reinterpret_cast<const uint8_t*>(request.data()), request.size());
+        udp.endPacket();
+    }
+
+    char buf[1024];
+    const uint32_t start = millis();
+    while (millis() - start < kSsdpWaitMs) {
+        const int len = udp.parsePacket();
+        if (len <= 0) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+        const int n = udp.read(buf, sizeof(buf) - 1);
+        if (n <= 0) continue;
+        std::string location;
+        if (!sonos::ssdp::parseSearchResponse(std::string(buf, n), location)) continue;
+        const std::string ip = sonos::topology::ipFromLocation(location);
+        if (!ip.empty() && std::find(ips.begin(), ips.end(), ip) == ips.end()) ips.push_back(ip);
+    }
+    udp.stop();
+    Serial.printf("SSDP: %u Sonos-Speaker gefunden\n", static_cast<unsigned>(ips.size()));
+    return ips;
+}
+
+/** Topologie von einem beliebigen Speaker lesen. */
+bool fetchTopology(const std::string& ip, std::vector<sonos::ZoneGroup>& groups) {
+    std::string body;
+    const sonos::SoapResult r = callWithRetry(ip, sonos::topology::getZoneGroupState(), body);
+    std::vector<sonos::ZoneGroup> parsed;
+    if (!r.ok || !sonos::topology::parseZoneGroupState(body, parsed) || parsed.empty()) return false;
+    groups = std::move(parsed);
+    return true;
+}
+
+void publishRooms(const std::vector<sonos::ZoneGroup>& groups, int selected) {
+    xSemaphoreTake(gRoomsMutex, portMAX_DELAY);
+    gRooms.version++;
+    gRooms.count = static_cast<int>(groups.size() < kMaxRooms ? groups.size() : kMaxRooms);
+    gRooms.selected = selected < gRooms.count ? selected : -1;
+    for (int i = 0; i < gRooms.count; ++i) {
+        RoomEntry& e = gRooms.rooms[i];
+        strlcpy(e.uuid, groups[i].coordinatorUuid.c_str(), sizeof(e.uuid));
+        strlcpy(e.name, groups[i].name.c_str(), sizeof(e.name));
+        strlcpy(e.display, groups[i].displayName().c_str(), sizeof(e.display));
+        e.memberCount = static_cast<uint8_t>(groups[i].members.size());
+    }
+    xSemaphoreGive(gRoomsMutex);
+}
+
+// ---------------------------------------------------------------------------
+// Verbindung zum aktiven Raum
+// ---------------------------------------------------------------------------
+
+/** Zustand der Verbindung innerhalb der Task. */
 struct Link {
+    // Anlage
+    std::vector<sonos::ZoneGroup> groups;
+    std::string preferredUuid;  // gewählter Raum (Koordinator-UUID zum Zeitpunkt der Wahl)
+    int roomIndex = -1;
+    std::string targetIp;       // Koordinator des aktiven Raums
+    bool targetIsGroup = false;
+    bool needDiscovery = true;
+    uint32_t nextDiscoveryAt = 0;
+    uint32_t nextTopologyAt = 0;
+
+    // Abfragen
     bool synced = false;            // Zustand und Lautstärke sind bekannt
     bool speakerFailing = false;    // Fehler wurde an die UI gemeldet
     int consecutiveFailures = 0;
@@ -96,7 +193,9 @@ struct Link {
     sonos::MediaInfo media;
     bool hasMedia = false;
 
-    /** Kontakt fehlgeschlagen. Einzelne Aussetzer still wiederholen, erst dann melden. */
+    bool hasTarget() const { return !targetIp.empty(); }
+
+    /** Kontakt fehlgeschlagen. Einzelne Aussetzer still wiederholen, erst dann melden und neu suchen. */
     void failed(const char* what, const std::string& error) {
         ++consecutiveFailures;
         Serial.printf("SONOS %s FEHLER (%d/%d): %s\n", what, consecutiveFailures, kFailuresBeforeError,
@@ -106,6 +205,7 @@ struct Link {
             return;
         }
         synced = false;
+        needDiscovery = true;  // vielleicht hat der Speaker eine neue IP
         nextPollAt = millis() + kRetryIntervalMs;
         if (!speakerFailing) {
             speakerFailing = true;
@@ -119,6 +219,50 @@ struct Link {
             speakerFailing = false;
             post(Event::Type::SpeakerOk);
         }
+    }
+
+    /** Aktiven Raum aus Wunsch-UUID und Topologie bestimmen; bei Wechsel neu synchronisieren. */
+    void resolveTarget() {
+        if (groups.empty()) return;
+        int idx = preferredUuid.empty() ? -1 : sonos::topology::findGroupOf(groups, preferredUuid);
+        if (idx < 0 && !gFallbackIp.empty()) idx = sonos::topology::findGroupByIp(groups, gFallbackIp);
+        if (idx < 0) idx = 0;
+        if (preferredUuid.empty()) preferredUuid = groups[idx].coordinatorUuid;
+
+        const sonos::ZoneGroup& g = groups[idx];
+        const bool changed = g.coordinatorIp != targetIp || idx != roomIndex || g.isGroup() != targetIsGroup;
+        roomIndex = idx;
+        publishRooms(groups, roomIndex);
+        if (!changed) return;
+
+        targetIp = g.coordinatorIp;
+        targetIsGroup = g.isGroup();
+        synced = false;
+        consecutiveFailures = 0;
+        lastTrackUri.clear();
+        hasMedia = false;
+        nextPollAt = millis();
+        Serial.printf("RAUM %s (Koordinator %s%s)\n", g.displayName().c_str(), targetIp.c_str(),
+                      targetIsGroup ? ", Gruppe" : "");
+        post(Event::Type::RoomChanged, roomIndex, g.displayName().c_str());
+    }
+
+    /** Anlage suchen: zuerst bekannte Adressen, dann SSDP. */
+    bool discover() {
+        post(Event::Type::Discovering);
+        std::vector<std::string> candidates;
+        if (!targetIp.empty()) candidates.push_back(targetIp);
+        if (!gFallbackIp.empty()) candidates.push_back(gFallbackIp);
+        for (const auto& g : groups) {
+            for (const auto& m : g.members) candidates.push_back(m.ip);
+        }
+        for (const auto& ip : candidates) {
+            if (fetchTopology(ip, groups)) return true;
+        }
+        for (const auto& ip : ssdpSearch()) {
+            if (fetchTopology(ip, groups)) return true;
+        }
+        return false;
     }
 };
 
@@ -136,18 +280,36 @@ void publishNowPlaying(const sonos::NowPlaying& np, uint32_t fetchedAt) {
     xSemaphoreGive(gNowPlayingMutex);
 }
 
+/** Lautstärke lesen: Einzelraum per RenderingControl, Gruppe per GroupRenderingControl. */
+bool readVolume(Link& link, int& volume, std::string& error) {
+    std::string body;
+    sonos::SoapResult r;
+    bool parsed = false;
+    if (link.targetIsGroup) {
+        // Snapshot, damit spätere Änderungen proportional auf die Mitglieder verteilt werden.
+        call(link.targetIp, sonos::grouprendering::snapshotGroupVolume(), body);
+        r = call(link.targetIp, sonos::grouprendering::getGroupVolume(), body);
+        parsed = r.ok && sonos::grouprendering::parseGetGroupVolume(body, volume);
+    } else {
+        r = call(link.targetIp, sonos::rendering::getVolume(), body);
+        parsed = r.ok && sonos::rendering::parseGetVolume(body, volume);
+    }
+    if (!parsed) error = r.ok ? std::string("Unerwartete Antwort vom Speaker") : r.error;
+    return parsed;
+}
+
 /** Wiedergabezustand, Titel und Lautstärke abfragen. */
 void poll(Link& link) {
     std::string body;
 
-    sonos::SoapResult r = call(sonos::avtransport::getTransportInfo(), body);
+    sonos::SoapResult r = call(link.targetIp, sonos::avtransport::getTransportInfo(), body);
     sonos::TransportState state = sonos::TransportState::Unknown;
     if (!r.ok || !sonos::avtransport::parseTransportInfo(body, state)) {
         link.failed("GetTransportInfo", r.ok ? std::string("Unerwartete Antwort vom Speaker") : r.error);
         return;
     }
 
-    r = call(sonos::avtransport::getPositionInfo(), body);
+    r = call(link.targetIp, sonos::avtransport::getPositionInfo(), body);
     const uint32_t fetchedAt = millis();
     sonos::PositionInfo pos;
     if (!r.ok || !sonos::parsePositionInfo(body, pos)) {
@@ -157,15 +319,15 @@ void poll(Link& link) {
 
     // Quelle gewechselt: GetMediaInfo liefert u. a. den Sendernamen bei Radio.
     if (pos.trackUri != link.lastTrackUri || !link.hasMedia) {
-        r = call(sonos::avtransport::getMediaInfo(), body);
+        r = call(link.targetIp, sonos::avtransport::getMediaInfo(), body);
         link.hasMedia = r.ok && sonos::parseMediaInfo(body, link.media);
         link.lastTrackUri = pos.trackUri;
     }
 
-    r = call(sonos::rendering::getVolume(), body);
     int volume = 0;
-    if (!r.ok || !sonos::rendering::parseGetVolume(body, volume)) {
-        link.failed("GetVolume", r.ok ? std::string("Unerwartete Antwort vom Speaker") : r.error);
+    std::string error;
+    if (!readVolume(link, volume, error)) {
+        link.failed(link.targetIsGroup ? "GetGroupVolume" : "GetVolume", error);
         return;
     }
 
@@ -184,9 +346,13 @@ void poll(Link& link) {
 
 void sendVolume(Link& link, int volume) {
     std::string body;
-    const sonos::SoapResult r = callWithRetry(sonos::rendering::setVolume(volume), body);
+    const sonos::SoapResult r =
+        callWithRetry(link.targetIp,
+                      link.targetIsGroup ? sonos::grouprendering::setGroupVolume(volume)
+                                         : sonos::rendering::setVolume(volume),
+                      body);
     if (r.ok) {
-        Serial.printf("SONOS SetVolume %d ok\n", volume);
+        Serial.printf("SONOS Set%sVolume %d ok\n", link.targetIsGroup ? "Group" : "", volume);
     } else {
         link.failed("SetVolume", r.error);
     }
@@ -217,13 +383,13 @@ const char* nameOf(Transport command) {
 void sendTransport(Link& link, const Command& command) {
     const char* name = nameOf(command.type);
     std::string body;
-    sonos::SoapResult r = callWithRetry(requestFor(command), body);
+    sonos::SoapResult r = callWithRetry(link.targetIp, requestFor(command), body);
 
     // Manche Quellen (z. B. Radio-Streams) können nicht pausieren – dann stoppen.
     if (!r.ok && command.type == Transport::Pause && r.upnpErrorCode == kUpnpTransitionNotAvailable) {
         Serial.println(F("SONOS Pause nicht möglich – sende Stop"));
         name = "Stop";
-        r = callWithRetry(sonos::avtransport::stop(), body);
+        r = callWithRetry(link.targetIp, sonos::avtransport::stop(), body);
     }
 
     if (r.ok) {
@@ -237,7 +403,7 @@ void sendTransport(Link& link, const Command& command) {
         post(Event::Type::TransportError, 0, r.error.c_str());
         link.failed(name, r.error);  // Verbindungsproblem
     } else {
-        // Der Speaker ist erreichbar, lehnt aber ab (z. B. Gruppenmitglied, Radio ohne „Nächster“).
+        // Der Speaker ist erreichbar, lehnt aber ab (z. B. Radio ohne „Nächster“).
         post(Event::Type::TransportError, r.upnpErrorCode, r.error.c_str());
         Serial.printf("SONOS %s abgelehnt: %s\n", name, r.error.c_str());
         link.nextPollAt = millis() + kPollAfterCommandMs;
@@ -256,6 +422,7 @@ void task(void*) {
     bool wifiUp = false;
     uint32_t lastWifiCheck = 0;
     Link link;
+    link.preferredUuid = gInitialRoomUuid;
 
     for (;;) {
         const uint32_t now = millis();
@@ -269,6 +436,7 @@ void task(void*) {
                 link.synced = false;
                 link.consecutiveFailures = 0;
                 link.nextPollAt = now;
+                link.nextTopologyAt = now;  // Topologie gleich neu lesen (IPs können sich geändert haben)
                 post(Event::Type::WifiConnected, 0, WiFi.localIP().toString().c_str());
                 Serial.printf("WLAN verbunden, IP %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
             } else if (!connected && wifiUp) {
@@ -280,6 +448,42 @@ void task(void*) {
         }
 
         if (!wifiUp) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        // --- Anlage suchen (Start, nach wiederholten Fehlern) --------------------
+        if (link.needDiscovery || link.groups.empty()) {
+            if (static_cast<int32_t>(now - link.nextDiscoveryAt) < 0) {
+                vTaskDelay(pdMS_TO_TICKS(50));
+                continue;
+            }
+            if (link.discover()) {
+                link.needDiscovery = false;
+                link.nextTopologyAt = millis() + kTopologyIntervalMs;
+                link.resolveTarget();
+            } else {
+                link.nextDiscoveryAt = millis() + kDiscoveryRetryMs;
+                post(Event::Type::NoSpeakers);
+                Serial.println(F("Keine Sonos-Anlage gefunden – neuer Versuch in 5 s"));
+                continue;
+            }
+        }
+
+        // --- Raumwahl der UI -----------------------------------------------------
+        RoomRequest room;
+        if (xQueueReceive(gRoomQueue, &room, 0) == pdTRUE) {
+            link.preferredUuid = room.uuid;
+            link.resolveTarget();
+        }
+
+        // --- Topologie regelmäßig auffrischen (Gruppen/IPs geändert?) -------------
+        if (static_cast<int32_t>(now - link.nextTopologyAt) >= 0) {
+            link.nextTopologyAt = now + kTopologyIntervalMs;
+            if (fetchTopology(link.targetIp, link.groups)) link.resolveTarget();
+        }
+
+        if (!link.hasTarget()) {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
@@ -301,36 +505,45 @@ void task(void*) {
     }
 }
 
+void enqueue(const Command& command) {
+    if (gTransportQueue && xQueueSend(gTransportQueue, &command, 0) != pdTRUE) {
+        log_w("Transport-Queue voll, Befehl verworfen");
+    }
+}
+
 }  // namespace
 
-void SonosLink::begin(const char* ssid, const char* password, const char* speakerIp) {
+void SonosLink::begin(const char* ssid, const char* password, const char* preferredRoomUuid,
+                      const char* fallbackIp) {
     gSsid = ssid;
     gPassword = password;
-    gSpeakerIp = speakerIp;
+    gInitialRoomUuid = preferredRoomUuid ? preferredRoomUuid : "";
+    gFallbackIp = fallbackIp ? fallbackIp : "";
     gVolumeQueue = xQueueCreate(1, sizeof(int));
     gTransportQueue = xQueueCreate(4, sizeof(Command));
+    gRoomQueue = xQueueCreate(1, sizeof(RoomRequest));
     gEventQueue = xQueueCreate(16, sizeof(Event));
     gNowPlayingMutex = xSemaphoreCreateMutex();
+    gRoomsMutex = xSemaphoreCreateMutex();
     // Kern 0 (dort läuft auch der WLAN-Stack), UI bleibt auf Kern 1.
-    // 12 KB Stack: XML-Auswertung der Titel-Metadaten braucht etwas mehr als in Schritt 2.
-    xTaskCreatePinnedToCore(task, "sonos", 12288, nullptr, 1, nullptr, 0);
+    // 16 KB Stack: XML-Auswertung von Titel-Metadaten und Topologie (Antwort ~15 KB bei 13 Geräten).
+    xTaskCreatePinnedToCore(task, "sonos", 16384, nullptr, 1, nullptr, 0);
 }
 
 void SonosLink::setVolume(int volume) {
     if (gVolumeQueue) xQueueOverwrite(gVolumeQueue, &volume);
 }
 
-namespace {
-void enqueue(const Command& command) {
-    if (gTransportQueue && xQueueSend(gTransportQueue, &command, 0) != pdTRUE) {
-        log_w("Transport-Queue voll, Befehl verworfen");
-    }
-}
-}  // namespace
-
 void SonosLink::transport(Transport command) { enqueue(Command{command, 0}); }
 
 void SonosLink::seek(int positionSec) { enqueue(Command{Transport::Seek, positionSec}); }
+
+void SonosLink::selectRoom(const char* uuid) {
+    if (!gRoomQueue) return;
+    RoomRequest r{};
+    strlcpy(r.uuid, uuid, sizeof(r.uuid));
+    xQueueOverwrite(gRoomQueue, &r);
+}
 
 bool SonosLink::pollEvent(Event& out) {
     return gEventQueue && xQueueReceive(gEventQueue, &out, 0) == pdTRUE;
@@ -345,6 +558,18 @@ bool SonosLink::takeNowPlaying(uint32_t lastVersion, NowPlayingInfo& out) {
         changed = true;
     }
     xSemaphoreGive(gNowPlayingMutex);
+    return changed;
+}
+
+bool SonosLink::takeRooms(uint32_t lastVersion, RoomsInfo& out) {
+    if (!gRoomsMutex) return false;
+    bool changed = false;
+    xSemaphoreTake(gRoomsMutex, portMAX_DELAY);
+    if (gRooms.version != lastVersion) {
+        out = gRooms;
+        changed = true;
+    }
+    xSemaphoreGive(gRoomsMutex);
     return changed;
 }
 

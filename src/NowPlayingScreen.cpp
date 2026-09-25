@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 
+#include <cstdio>
 #include <cstring>
 
 #include "ModeController.h"
@@ -52,6 +53,12 @@ lv_obj_t* menuLayer;
 lv_obj_t* menuBubbles[app::ModeController::kMenuItemCount];
 lv_obj_t* menuName;
 lv_obj_t* menuHint;
+
+// Raumwahl (Drehrad mit 5 sichtbaren Zeilen)
+constexpr int kPickerRows = 5;
+lv_obj_t* pickerLayer;
+lv_obj_t* pickerRows[kPickerRows];
+lv_obj_t* pickerCounter;
 
 // Spulen
 lv_obj_t* scrubTimeLabel;
@@ -196,6 +203,37 @@ void NowPlayingScreen::create(SwipeHandler onSwipe) {
     menuHint = makeLabel(menuLayer, &font_inter_14, kTextDim, 200, 25, false);
     lv_obj_add_flag(menuLayer, LV_OBJ_FLAG_HIDDEN);
 
+    // --- Raumwahl (deckend, über allem) ---------------------------------------------
+    pickerLayer = lv_obj_create(scr);
+    lv_obj_remove_style_all(pickerLayer);
+    lv_obj_set_size(pickerLayer, 480, 480);
+    lv_obj_center(pickerLayer);
+    lv_obj_set_style_radius(pickerLayer, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(pickerLayer, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(pickerLayer, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(pickerLayer, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(pickerLayer, LV_OBJ_FLAG_SCROLLABLE);
+    // Markierung hinter der mittleren Zeile
+    lv_obj_t* band = lv_obj_create(pickerLayer);
+    lv_obj_remove_style_all(band);
+    lv_obj_set_size(band, 400, 64);
+    lv_obj_center(band);
+    lv_obj_set_style_radius(band, 32, 0);
+    lv_obj_set_style_bg_color(band, lv_color_hex(kTrackBg), 0);
+    lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
+    // Zeilen: außen klein und blass, innen groß und hell
+    const lv_font_t* fonts[kPickerRows] = {&font_inter_14, &font_inter_20, &font_inter_28, &font_inter_20, &font_inter_14};
+    const uint32_t colors[kPickerRows] = {kTextFaint, kTextDim, kText, kTextDim, kTextFaint};
+    const int ys[kPickerRows] = {-130, -72, 0, 72, 130};
+    const int widths[kPickerRows] = {260, 330, 370, 330, 260};
+    for (int i = 0; i < kPickerRows; ++i) {
+        pickerRows[i] = makeLabel(pickerLayer, fonts[i], colors[i], widths[i], ys[i], false);
+    }
+    lv_obj_t* pickerTitle = makeLabel(pickerLayer, &font_inter_14, kAccent, 200, -185, false);
+    lv_label_set_text(pickerTitle, LV_SYMBOL_HOME "  Raum wählen");
+    pickerCounter = makeLabel(pickerLayer, &font_inter_14, kTextDim, 200, 185, false);
+    lv_obj_add_flag(pickerLayer, LV_OBJ_FLAG_HIDDEN);
+
     setTrack("", "", "");
     setProgress(false, 0, -1, -1);
     setVolume(0, false);
@@ -273,6 +311,27 @@ void NowPlayingScreen::showMenu(int selection) {
 }
 
 void NowPlayingScreen::hideMenu() { lv_obj_add_flag(menuLayer, LV_OBJ_FLAG_HIDDEN); }
+
+void NowPlayingScreen::showRoomPicker(const char* const* names, int count, int index, int active) {
+    for (int row = 0; row < kPickerRows; ++row) {
+        const int i = index + row - kPickerRows / 2;
+        if (i < 0 || i >= count) {
+            setTextIfChanged(pickerRows[row], "");
+            continue;
+        }
+        char text[80];
+        if (i == active) snprintf(text, sizeof(text), LV_SYMBOL_OK " %s", names[i]);
+        else snprintf(text, sizeof(text), "%s", names[i]);
+        setTextIfChanged(pickerRows[row], text);
+    }
+    char counter[16];
+    snprintf(counter, sizeof(counter), "%d / %d", index + 1, count);
+    setTextIfChanged(pickerCounter, counter);
+    lv_obj_add_flag(menuLayer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(pickerLayer, LV_OBJ_FLAG_HIDDEN);
+}
+
+void NowPlayingScreen::hideRoomPicker() { lv_obj_add_flag(pickerLayer, LV_OBJ_FLAG_HIDDEN); }
 
 void NowPlayingScreen::showScrub(int targetSec, int durationSec) {
     if (!scrubbing) {

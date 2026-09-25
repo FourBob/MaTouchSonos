@@ -1,5 +1,5 @@
-// Fernbedienung – Stand Schritt 4: Now Playing, Lautstärke, Play/Pause, Titel wechseln,
-// Ringmenü und Spulen.
+// Fernbedienung – Stand Schritt 5: Now Playing, Lautstärke, Play/Pause, Titel wechseln,
+// Ringmenü, Spulen und Raumwahl (Anlage wird automatisch gefunden).
 //
 // Ablauf pro Schleifendurchlauf (Kern 1):
 //   Drehring/Taste -> ModeController (Normal / Menü / Spulen) entscheidet, was sie bedeuten:
@@ -8,6 +8,7 @@
 //             Taste lang -> Ringmenü
 //     Menü:   Drehring wählt, kurz öffnet, lang schließt
 //     Spulen: Drehring verschiebt die Zielposition, kurz -> SonosLink.seek, lang bricht ab
+//     Raum:   Drehring wählt, kurz -> SonosLink.selectRoom (+ im NVS gemerkt), lang bricht ab
 //   Wischen    -> rechts: nächster, links: vorheriger Titel              -> SonosLink.transport(Next/Previous)
 //   SonosLink-Ereignisse + Now-Playing-Momentaufnahme        -> Controller -> Anzeige
 // Das Netzwerk läuft in der SonosLink-Task auf Kern 0 und blockiert die UI nie.
@@ -15,6 +16,7 @@
 #if !MTS_HWTEST
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <lvgl.h>
 
 #include <cstring>
@@ -35,7 +37,10 @@
 #if __has_include("secrets.h")
 #include "secrets.h"
 #else
-#error "include/secrets.h fehlt. Anlegen mit: cp include/secrets.example.h include/secrets.h (dann WLAN und Speaker-IP eintragen)"
+#error "include/secrets.h fehlt. Anlegen mit: cp include/secrets.example.h include/secrets.h (dann WLAN eintragen)"
+#endif
+#ifndef SONOS_IP
+#define SONOS_IP ""  // optional ab Schritt 5: die Anlage wird per SSDP gefunden
 #endif
 
 namespace remote_app {
@@ -52,6 +57,11 @@ app::ModeController modes;
 NowPlayingScreen screen;
 int32_t rawSinceLastDetent = 0;
 
+net::RoomsInfo rooms;            // Räume/Gruppen der Anlage
+uint32_t roomsVersion = 0;
+char roomName[56] = "";          // aktiver Raum, steht in der Statuszeile
+Preferences prefs;               // NVS: zuletzt gewählter Raum (Schlüssel "room")
+
 net::NowPlayingInfo nowPlaying;  // letzte Momentaufnahme
 bool hasNowPlaying = false;      // false nach Verbindungsverlust, bis eine neue Abfrage eintrifft
 uint32_t nowPlayingVersion = 0;  // zuletzt übernommene Version (wird nie zurückgesetzt)
@@ -64,7 +74,7 @@ uint32_t messageUntil = 0;
 
 bool secretsConfigured() {
     // Platzhalter aus secrets.example.h erkennen (z. B. CI-Build oder vergessen auszufüllen).
-    return std::strcmp(WIFI_SSID, "MeinWLAN") != 0 && std::strlen(WIFI_SSID) > 0 && std::strlen(SONOS_IP) > 0;
+    return std::strcmp(WIFI_SSID, "MeinWLAN") != 0 && std::strlen(WIFI_SSID) > 0;
 }
 
 // --- Statuszeile ---------------------------------------------------------------
@@ -169,13 +179,27 @@ void handleNetEvent(const net::Event& e, uint32_t now) {
             showUnknownState();
             setConnectionStatus("WLAN getrennt – verbinde neu …", S::Error);
             break;
+        case T::Discovering:
+            setConnectionStatus("Suche Sonos-Anlage …", S::Info);
+            break;
+        case T::NoSpeakers:
+            setConnectionStatus("Keine Sonos-Anlage gefunden – suche weiter …", S::Error);
+            break;
+        case T::RoomChanged: {
+            showUnknownState();
+            strlcpy(roomName, e.text, sizeof(roomName));
+            char text[80];
+            snprintf(text, sizeof(text), "Verbinde mit %s …", roomName);
+            setConnectionStatus(text, S::Info);
+            break;
+        }
         case T::SpeakerVolume: {
             const bool wasKnown = volume.hasValue();
             if (volume.onRemoteVolume(e.value, now)) {
                 screen.setVolume(volume.value(), true);
                 if (wasKnown) screen.showVolumeOverlay(now);  // z. B. in der Sonos-App geändert
             }
-            setConnectionStatus("", S::Ok);
+            setConnectionStatus(roomName, S::Info);  // im Normalbetrieb: Name des aktiven Raums
             break;
         }
         case T::TransportState:
@@ -234,7 +258,25 @@ app::ModeController::Context modeContext(uint32_t now) {
     c.canScrub = hasNowPlaying && progress.known();
     c.positionSec = progress.positionSec(now);
     c.durationSec = progress.durationSec();
+    c.roomCount = rooms.count;
+    c.currentRoom = rooms.selected;
     return c;
+}
+
+void showRoomPicker(int index) {
+    const char* names[net::kMaxRooms];
+    for (int i = 0; i < rooms.count; ++i) names[i] = rooms.rooms[i].display;
+    screen.showRoomPicker(names, rooms.count, index, rooms.selected);
+}
+
+void selectRoom(int index, uint32_t now) {
+    if (index < 0 || index >= rooms.count) return;
+    if (index == rooms.selected) return;  // schon aktiv
+    const net::RoomEntry& r = rooms.rooms[index];
+    net::SonosLink::selectRoom(r.uuid);
+    prefs.putString("room", r.uuid);  // für den nächsten Start merken
+    Serial.printf("RAUM gewählt: %s (%s)\n", r.display, r.uuid);
+    (void)now;
 }
 
 const char* menuItemName(int item) {
@@ -289,12 +331,23 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
             lastShownSecond = -2;
             Serial.println(F("SCRUB abgebrochen"));
             break;
+        case T::RoomPickerOpened:
+        case T::RoomPickerMoved:
+            showRoomPicker(a.value);
+            break;
+        case T::RoomSelected:
+            screen.hideRoomPicker();
+            selectRoom(a.value, now);
+            break;
+        case T::RoomPickerCancelled:
+            screen.hideRoomPicker();
+            break;
         case T::NotAvailable: {
             screen.hideMenu();
             const auto item = static_cast<app::ModeController::MenuItem>(a.value);
             const char* text = item == app::ModeController::MenuItem::Scrub
                                    ? "Spulen geht nur bei Titeln mit bekannter Länge"
-                                   : (item == app::ModeController::MenuItem::Rooms ? "Räume kommen in Schritt 5"
+                                   : (item == app::ModeController::MenuItem::Rooms ? "Noch keine Räume gefunden"
                                                                                    : "Favoriten kommen in Schritt 7");
             showMessage(text, NowPlayingScreen::Status::Info, kMessageMs, now);
             break;
@@ -305,7 +358,7 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
 }  // namespace
 
 void setup() {
-    diag::logBootInfo("Fernbedienung (Schritt 4)");
+    diag::logBootInfo("Fernbedienung (Schritt 5)");
 
     if (!hal::Display::begin()) {
         Serial.println(F("FEHLER: Display-Initialisierung fehlgeschlagen"));
@@ -314,13 +367,16 @@ void setup() {
     screen.create(onSwipe);
 
     if (!secretsConfigured()) {
-        setConnectionStatus("include/secrets.h ausfüllen: WLAN und Speaker-IP", NowPlayingScreen::Status::Error);
+        setConnectionStatus("include/secrets.h ausfüllen: WLAN-Name und Passwort", NowPlayingScreen::Status::Error);
         Serial.println(F("FEHLER: include/secrets.h enthält noch die Platzhalter – siehe README"));
         return;
     }
 
-    Serial.printf("Speaker: %s\n", SONOS_IP);
-    net::SonosLink::begin(WIFI_SSID, WIFI_PASS, SONOS_IP);
+    prefs.begin("matouchsonos", false);
+    static String savedRoom = prefs.getString("room", "");
+    Serial.printf("Gemerkter Raum: %s, Start-IP: %s\n", savedRoom.length() ? savedRoom.c_str() : "(keiner)",
+                  std::strlen(SONOS_IP) ? SONOS_IP : "(keine, nur SSDP)");
+    net::SonosLink::begin(WIFI_SSID, WIFI_PASS, savedRoom.c_str(), SONOS_IP);
 }
 
 void loop() {
@@ -354,6 +410,14 @@ void loop() {
     // Netzwerk
     net::Event e;
     while (net::SonosLink::pollEvent(e)) handleNetEvent(e, now);
+    if (net::SonosLink::takeRooms(roomsVersion, rooms)) {
+        roomsVersion = rooms.version;
+        if (modes.mode() == app::ModeController::Mode::RoomPicker) {
+            int idx = modes.roomPickerIndex();
+            if (idx >= rooms.count) idx = rooms.count - 1;
+            if (idx >= 0) showRoomPicker(idx);
+        }
+    }
     if (net::SonosLink::takeNowPlaying(nowPlayingVersion, nowPlaying)) {
         nowPlayingVersion = nowPlaying.version;
         hasNowPlaying = true;

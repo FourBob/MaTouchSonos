@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 4 von 9: Now Playing, Lautstärke, Play/Pause, Titelwechsel per Wischen, Ringmenü und Spulen.
+> **Projektstand:** Schritt 5 von 9: Now Playing, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen und Raumwahl. Die Anlage wird automatisch gefunden.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -21,7 +21,8 @@ Die Bedienung ist auf die runde Form und den Drehring ausgelegt:
 |---|---|
 | **Ring drehen** | Lautstärke (Bogen am Rand zeigt den Wert) |
 | **Kurz drücken** | Play / Pause |
-| **Lang drücken** | Ringmenü: **Spulen**, **Räume** (ab Schritt 5), **Favoriten** (ab Schritt 7), **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
+| **Lang drücken** | Ringmenü: **Spulen**, **Räume**, **Favoriten** (ab Schritt 7), **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
+| **Räume** | Drehrad mit allen Räumen und Gruppen („Küche + 2“). Drücken schaltet um, der Raum wird für den nächsten Start gemerkt. |
 | **Nach rechts / links wischen** | Nächster / vorheriger Titel |
 | **Spulen** | Der Ring verschiebt die Zielposition auf dem Fortschrittsring (1 % pro Klick, mindestens 5 s), Drücken springt dorthin, Langdruck bricht ab |
 
@@ -36,8 +37,8 @@ Außen läuft der Fortschrittsbogen.
 | 1 | Lautstärke eines Speakers mit dem Ring regeln | ✅ getestet |
 | 2 | Play/Pause mit Statusanzeige | ✅ getestet |
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ✅ getestet |
-| 4 | Ringmenü und Scrubbing | 🧪 wartet auf Geräte-Test |
-| 5 | Räume automatisch finden und wählen | ⏳ |
+| 4 | Ringmenü und Scrubbing | ✅ getestet |
+| 5 | Räume automatisch finden und wählen | 🧪 wartet auf Geräte-Test |
 | 6 | Albumcover | ⏳ |
 | 7 | Sonos-Favoriten und Radio starten | ⏳ |
 | 8 | Gruppen verwalten, Gruppenlautstärke | ⏳ |
@@ -96,19 +97,19 @@ git clone https://github.com/FourBob/MaTouchSonos.git
 cd MaTouchSonos
 ```
 
-### 3. WLAN-Zugangsdaten und Speaker eintragen
+### 3. WLAN-Zugangsdaten eintragen
 
 ```bash
 cp include/secrets.example.h include/secrets.h
-# include/secrets.h öffnen und WLAN-Name, Passwort und Speaker-IP eintragen
+# include/secrets.h öffnen und WLAN-Name und Passwort eintragen
 ```
 
 `include/secrets.h` steht in `.gitignore` und wird **nie** committet.
 
-**Die IP eines Speakers findest du** in der Geräteliste deines Routers (Sonos-Geräte heißen dort meist
-„Sonos-…“ oder nach dem Modell) oder in der Sonos-App in den Systemeinstellungen unter den Infos
-zum System. Ob die IP stimmt, prüfst du mit `python3 tools/sonos_probe.py <IP> info`: Das zeigt den Raumnamen.
-Ab Schritt 5 findet die Fernbedienung alle Speaker selbst, dann entfällt die IP.
+Die Sonos-Anlage findet die Fernbedienung selbst (SSDP). Den Raum wählst du am Gerät im Ringmenü.
+Optional kannst du in `SONOS_IP` die IP eines Speakers eintragen. Sie dient als schneller Startpunkt
+für die Suche und legt den Raum beim allerersten Start fest. Welche Speaker es gibt, zeigt
+`python3 tools/sonos_probe.py - discover`.
 
 > Das Board kann nur **2,4-GHz-WLAN**. Bei getrennten 2,4-/5-GHz-Netzen den 2,4-GHz-Namen eintragen.
 
@@ -202,9 +203,9 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 |---|---|
 | Display bleibt schwarz | Im Log nach `FEHLER: Display` suchen. PSRAM muss als OPI erkannt werden (`PSRAM: 7.9 MB` im Log). |
 | Build-Fehler `include/secrets.h fehlt` | `cp include/secrets.example.h include/secrets.h` und Werte eintragen. |
-| Anzeige „include/secrets.h ausfüllen“ | Die Datei enthält noch die Platzhalter `MeinWLAN` usw. |
+| Anzeige „include/secrets.h ausfüllen“ | Die Datei enthält noch den Platzhalter `MeinWLAN`. |
+| „Keine Sonos-Anlage gefunden“ | Gerät und Speaker müssen im selben Netz sein. Manche Router blockieren Multicast zwischen 2,4 und 5 GHz oder im Gast-WLAN. Abhilfe: `SONOS_IP` in `secrets.h` eintragen, dann wird die Anlage über diese IP gefunden. |
 | Bleibt bei „WLAN verbinden …“ | SSID/Passwort prüfen. Nur 2,4 GHz wird unterstützt. |
-| „Speaker ist Teil einer Gruppe“ | Play/Pause funktioniert nur am Gruppen-Koordinator. Bis Schritt 5 dessen IP in `secrets.h` eintragen, oder den Speaker in der Sonos-App aus der Gruppe nehmen. |
 | Wischen wechselt den Titel nicht | Bei Radio, TV und Line-In gibt es keinen nächsten Titel (Hinweis „Bei dieser Quelle nicht möglich“). Sonst: zügig über mindestens ein Drittel des Displays wischen. |
 | „Nichts zum Abspielen“ | Die Warteschlange des Speakers ist leer. Erst in der Sonos-App etwas starten. Ab Schritt 7 geht das mit Favoriten direkt am Gerät. |
 | „Speaker nicht erreichbar“ | Speaker-IP prüfen: `python3 tools/sonos_probe.py <IP> info` muss den Raumnamen zeigen. |

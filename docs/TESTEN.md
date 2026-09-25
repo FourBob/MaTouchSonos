@@ -250,7 +250,7 @@ python3 tools/sonos_probe.py <IP> --save probe-tv nowplaying          # TV/Line-
 
 ---
 
-## Checkliste Schritt 4 – Ringmenü und Spulen
+## Checkliste Schritt 4 – Ringmenü und Spulen ✅
 
 **T3** (optional, ein Titel mit bekannter Länge muss laufen):
 ```bash
@@ -280,3 +280,37 @@ python3 tools/sonos_probe.py <IP> --save probe-seek transport seek 0:01:30
 **Allgemein**
 - [ ] Im normalen Modus funktionieren Lautstärke, Play/Pause und Wischen wie bisher
 - [ ] Ist die Bedienung ohne Anleitung verständlich? Dein Eindruck als Notiz
+
+---
+
+## Checkliste Schritt 5 – Räume finden und wählen
+
+**Vorbereitung:** Die Speaker-IP in `include/secrets.h` ist jetzt optional. Für den ersten Test
+**leer lassen** (`#define SONOS_IP ""`), damit die automatische Suche geprüft wird.
+
+**Suche** (`pio run -e matouch -t upload`)
+- [ ] Nach dem Start: „Suche Sonos-Anlage …“, dann im Log `SSDP: 13 Sonos-Speaker gefunden` und `RAUM …`
+- [ ] Beim allerersten Start wird der alphabetisch erste Raum gewählt (bei dir „Bad Kinder“),
+      die Statuszeile unten zeigt den Raumnamen
+- [ ] Now Playing, Lautstärke und Play/Pause funktionieren für diesen Raum wie bisher
+
+**Raumwahl**
+- [ ] Lang drücken → Ring auf „Räume“ (Haus-Symbol) → kurz drücken: Drehrad mit deinen 7 Räumen,
+      der aktive hat ein Häkchen, unten steht z. B. `1 / 7`
+- [ ] Drehen blättert durch die Räume, an den Enden bleibt die Auswahl stehen
+- [ ] Keine Satelliten, Subs oder doppelten Einträge (z. B. nur **ein** „Esszimmer“ trotz Stereopaar)
+- [ ] Kurz drücken auf „Wohnzimmer“: „Verbinde mit Wohnzimmer …“, danach Titel/Lautstärke des Wohnzimmers
+- [ ] Langdruck bricht die Raumwahl ab, ohne umzuschalten
+- [ ] **Neustart** (Reset-Taste): Das Gerät startet wieder mit dem zuletzt gewählten Raum
+
+**Gruppen** (in der Sonos-App zwei Räume gruppieren, z. B. Wohnzimmer + Esszimmer)
+- [ ] Innerhalb von 30 s erscheint der Raum im Drehrad als „Wohnzimmer + 1“ (bzw. mit dem Koordinator vorne)
+- [ ] Ist ein Raum der Gruppe aktiv, gilt die Lautstärke für die **ganze Gruppe**, Log `SetGroupVolume … ok`
+- [ ] Play/Pause wirkt auf die ganze Gruppe
+- [ ] Gruppe in der App wieder auflösen: Das Gerät folgt, die Anzeige wird wieder zu „Wohnzimmer“
+- [ ] T3 dazu (während gruppiert):
+      `python3 tools/sonos_probe.py <Koordinator-IP> --save probe-gruppe groupvolume get`
+
+**Robustheit**
+- [ ] Router neu starten: Das Gerät findet die Anlage wieder, der Raum bleibt derselbe
+- [ ] 10 Minuten laufen lassen: `heap_frei` stabil, kein Neustart

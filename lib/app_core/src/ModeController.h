@@ -8,15 +8,16 @@ namespace app {
  * Bedienmodi und was Drehring und Taste in welchem Modus bedeuten.
  *
  *   Normal ──lang──▶ Menü ──kurz auf „Spulen“──▶ Spulen
- *     ▲               │  ▲                          │
- *     └──lang/Timeout─┘  └─────────────────────────-┘ (kurz = springen, lang/Timeout = abbrechen,
- *                                                      beides zurück nach Normal)
+ *     ▲               │    └─kurz auf „Räume“──▶ Raumwahl
+ *     └──lang/Timeout─┘  Spulen/Raumwahl: kurz = übernehmen, lang/Timeout = abbrechen,
+ *                        beides zurück nach Normal
  *
  * | Modus  | Ring drehen          | kurz drücken         | lang drücken |
  * |--------|----------------------|----------------------|--------------|
  * | Normal | Lautstärke           | Play/Pause           | Menü öffnen  |
  * | Menü   | Eintrag wählen       | Eintrag ausführen    | schließen    |
  * | Spulen | Zielposition ändern  | dorthin springen     | abbrechen    |
+ * | Raum   | Raum wählen          | Raum übernehmen      | abbrechen    |
  *
  * Menü und Spulen schließen sich nach `timeoutMs` ohne Eingabe von selbst.
  * Die Klasse entscheidet nur – ausführen (Lautstärke senden, Seek, Anzeige) tut der Aufrufer
@@ -24,7 +25,7 @@ namespace app {
  */
 class ModeController {
 public:
-    enum class Mode : uint8_t { Normal, Menu, Scrub };
+    enum class Mode : uint8_t { Normal, Menu, Scrub, RoomPicker };
 
     /** Menüeinträge im Uhrzeigersinn, beginnend oben. */
     enum class MenuItem : uint8_t { Scrub, Rooms, Favorites, Close };
@@ -42,6 +43,10 @@ public:
             ScrubMoved,        ///< value = Zielposition [s]
             ScrubCommitted,    ///< value = Zielposition [s] → Seek senden
             ScrubCancelled,
+            RoomPickerOpened,  ///< value = markierter Raum (Index)
+            RoomPickerMoved,   ///< value = markierter Raum (Index)
+            RoomSelected,      ///< value = gewählter Raum (Index) → umschalten
+            RoomPickerCancelled,
             NotAvailable,      ///< value = MenuItem, das gerade nicht geht (z. B. Spulen bei Radio)
         };
         Type type = Type::None;
@@ -53,6 +58,8 @@ public:
         bool canScrub = false;  ///< Titel mit bekannter Länge
         int positionSec = 0;
         int durationSec = 0;
+        int roomCount = 0;     ///< Anzahl gefundener Räume/Gruppen
+        int currentRoom = 0;   ///< Index des aktiven Raums
     };
 
     explicit ModeController(uint32_t timeoutMs = 10000) : timeoutMs_(timeoutMs) {}
@@ -60,9 +67,10 @@ public:
     Mode mode() const { return mode_; }
     int menuSelection() const { return selection_; }
     int scrubTarget() const { return scrubTarget_; }
+    int roomPickerIndex() const { return pickerIndex_; }
 
-    /** Ob ein Menüeintrag schon verfügbar ist (Räume/Favoriten folgen in Schritt 5/7). */
-    static bool isEnabled(MenuItem item) { return item == MenuItem::Scrub || item == MenuItem::Close; }
+    /** Ob ein Menüeintrag schon verfügbar ist (Favoriten folgen in Schritt 7). */
+    static bool isEnabled(MenuItem item) { return item != MenuItem::Favorites; }
 
     Action onLongPress(uint32_t nowMs) {
         touch(nowMs);
@@ -77,6 +85,9 @@ public:
             case Mode::Scrub:
                 mode_ = Mode::Normal;
                 return {Action::Type::ScrubCancelled, 0};
+            case Mode::RoomPicker:
+                mode_ = Mode::Normal;
+                return {Action::Type::RoomPickerCancelled, 0};
         }
         return {};
     }
@@ -91,6 +102,9 @@ public:
             case Mode::Scrub:
                 mode_ = Mode::Normal;
                 return {Action::Type::ScrubCommitted, scrubTarget_};
+            case Mode::RoomPicker:
+                mode_ = Mode::Normal;
+                return {Action::Type::RoomSelected, pickerIndex_};
         }
         return {};
     }
@@ -116,6 +130,15 @@ public:
                 if (scrubTarget_ > ctx.durationSec) scrubTarget_ = ctx.durationSec;
                 return {Action::Type::ScrubMoved, scrubTarget_};
             }
+            case Mode::RoomPicker: {
+                // Kein Umlauf: An den Enden bleibt die Auswahl stehen – so behält man die Orientierung.
+                int next = pickerIndex_ + static_cast<int>(detents);
+                if (next < 0) next = 0;
+                if (next > ctx.roomCount - 1) next = ctx.roomCount - 1;
+                if (next == pickerIndex_) return {};
+                pickerIndex_ = next;
+                return {Action::Type::RoomPickerMoved, pickerIndex_};
+            }
         }
         return {};
     }
@@ -125,7 +148,13 @@ public:
         if (mode_ == Mode::Normal || (nowMs - lastInputMs_) < timeoutMs_) return {};
         const Mode was = mode_;
         mode_ = Mode::Normal;
-        return {was == Mode::Menu ? Action::Type::MenuClosed : Action::Type::ScrubCancelled, 0};
+        switch (was) {
+            case Mode::Menu: return {Action::Type::MenuClosed, 0};
+            case Mode::Scrub: return {Action::Type::ScrubCancelled, 0};
+            case Mode::RoomPicker: return {Action::Type::RoomPickerCancelled, 0};
+            case Mode::Normal: break;
+        }
+        return {};
     }
 
 private:
@@ -166,6 +195,14 @@ private:
                 mode_ = Mode::Normal;
                 return {Action::Type::MenuClosed, 0};
             case MenuItem::Rooms:
+                if (ctx.roomCount <= 0) {
+                    mode_ = Mode::Normal;
+                    return {Action::Type::NotAvailable, static_cast<int>(item)};
+                }
+                mode_ = Mode::RoomPicker;
+                pickerIndex_ = ctx.currentRoom;
+                if (pickerIndex_ < 0 || pickerIndex_ >= ctx.roomCount) pickerIndex_ = 0;
+                return {Action::Type::RoomPickerOpened, pickerIndex_};
             case MenuItem::Favorites:
                 return {Action::Type::NotAvailable, static_cast<int>(item)};
         }
@@ -176,6 +213,7 @@ private:
     Mode mode_ = Mode::Normal;
     int selection_ = 0;
     int scrubTarget_ = 0;
+    int pickerIndex_ = 0;
     uint32_t lastInputMs_ = 0;
 };
 
