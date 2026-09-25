@@ -22,7 +22,7 @@
 ├───────────────────────────────┬──────────────────────────┤
 │ lib/app_core/   Bedienlogik   │ lib/sonos_core/          │
 │  QuadratureDecoder            │  SOAP-Envelopes, XML-    │
-│  DetentAccumulator            │  und DIDL-Parser,        │
+│  RotaryDetentDecoder          │  und DIDL-Parser,        │
 │  ButtonDetector               │  Topologie (ab Schritt 1)│
 │  Zustandsmaschine (ab 2/4)    │                          │
 │        ── reines C++, auf dem PC getestet ──             │
@@ -39,18 +39,22 @@ Abhängigkeiten zeigen nur nach unten. `app_core` und `sonos_core` kennen weder 
 ## Datenfluss der Eingaben (Schritt 0)
 
 ```
-Drehring ──Interrupt──▶ QuadratureDecoder ──Rohschritte (atomic)──▶ loop()
-                                                                     │
-                                          DetentAccumulator ◀────────┘
-                                                 │ Rastungen
-Taste ──Pegel──▶ ButtonDetector ──Short/Long──▶ Screen ──▶ LVGL ──▶ Display
-Touch ◀──I2C-Polling── LVGL-Eingabetreiber ────────────────▲
+Drehring ──Interrupt──▶ RotaryDetentDecoder ──Rastungen (atomic)──▶ loop() ──▶ Screen
+                        (QuadratureDecoder +                                    │
+                         Ruhelagen-Synchronisation)                             ▼
+Taste ──Pegel──▶ ButtonDetector ──Short/Long──▶ Screen ──────────────────▶ LVGL ──▶ Display
+Touch ◀──I2C-Polling── LVGL-Eingabetreiber ───────────────────────────────────▲
 ```
 
-- Der **Quadratur-Decoder** wertet beide Encoder-Signale per Übergangstabelle aus. Ungültige
+- Der **QuadratureDecoder** wertet beide Encoder-Signale per Übergangstabelle aus. Ungültige
   Sprünge durch Kontaktprellen werden verworfen, eine zeitliche Entprellung ist nicht nötig.
-- Der **DetentAccumulator** meldet erst volle Rastungen. Ein angefangener und wieder
-  zurückgedrehter Schritt zählt nicht.
+- Der **RotaryDetentDecoder** summiert die Rohschritte und wertet erst aus, wenn der Encoder
+  wieder in seiner **Ruhelage** steht (A = B = 1). Dort meldet er eine Rastung, wenn mehr als
+  die halbe Strecke zurückgelegt wurde, und setzt die Summe auf 0.
+  *Warum so?* Ein reiner Zähler „alle 4 Rohschritte eine Rastung“ verschiebt sich dauerhaft um
+  einen halben Klick, sobald durch Prellen ein Schritt verloren geht. In eine Richtung merkt man
+  das nicht, aber beim Hin-und-her-Drehen kommt dann kein Klick mehr an. Genau das hat der
+  Geräte-Test von Schritt 0 gezeigt. Die Synchronisation in der Ruhelage schließt diesen Fehler aus.
 - Der **ButtonDetector** meldet `Long` schon beim Erreichen von 600 ms, nicht erst beim
   Loslassen. So öffnet sich das Menü, während der Finger noch drückt.
 

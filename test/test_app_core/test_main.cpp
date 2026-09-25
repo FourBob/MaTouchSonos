@@ -6,13 +6,13 @@
 #include <vector>
 
 #include "ButtonDetector.h"
-#include "DetentAccumulator.h"
 #include "QuadratureDecoder.h"
+#include "RotaryDetentDecoder.h"
 
 using app::ButtonDetector;
 using app::ButtonEvent;
-using app::DetentAccumulator;
 using app::QuadratureDecoder;
+using app::RotaryDetentDecoder;
 
 void setUp() {}
 void tearDown() {}
@@ -68,44 +68,99 @@ void test_quadrature_contact_bounce_cancels_out() {
     TEST_ASSERT_EQUAL_INT(4, sum);
 }
 
-// --- DetentAccumulator ------------------------------------------------------
+// --- RotaryDetentDecoder ----------------------------------------------------
 
-void test_detent_needs_full_steps() {
-    DetentAccumulator acc(4);
-    TEST_ASSERT_EQUAL_INT(0, acc.add(3));
-    TEST_ASSERT_EQUAL_INT(1, acc.add(1));
-    TEST_ASSERT_EQUAL_INT(0, acc.pending());
+// Vollschritt-Encoder, Ruhelage 11. Eine Rastung:
+//   im Uhrzeigersinn:        11 -> 01 -> 00 -> 10 -> 11
+//   gegen den Uhrzeigersinn: 11 -> 10 -> 00 -> 01 -> 11
+struct Level { bool a, b; };
+static const Level kClickCw[]  = {{false, true}, {false, false}, {true, false}, {true, true}};
+static const Level kClickCcw[] = {{true, false}, {false, false}, {false, true}, {true, true}};
+
+static int feedLevels(RotaryDetentDecoder& dec, const Level* seq, int n) {
+    int sum = 0;
+    for (int i = 0; i < n; ++i) sum += dec.update(seq[i].a, seq[i].b);
+    return sum;
 }
 
-void test_detent_half_turn_back_is_nothing() {
-    DetentAccumulator acc(4);
-    TEST_ASSERT_EQUAL_INT(0, acc.add(2));
-    TEST_ASSERT_EQUAL_INT(0, acc.add(-2));
-    TEST_ASSERT_EQUAL_INT(0, acc.pending());
+void test_detent_one_click_each_direction() {
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 4));
+    TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 4));
 }
 
-void test_detent_many_steps_at_once() {
-    DetentAccumulator acc(4);
-    TEST_ASSERT_EQUAL_INT(3, acc.add(13));
-    TEST_ASSERT_EQUAL_INT(1, acc.pending());
-    TEST_ASSERT_EQUAL_INT(-2, acc.add(-9));  // 1 - 9 = -8 -> -2 Rastungen
+void test_detent_reported_only_at_rest_position() {
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    // Die ersten drei Zwischenschritte melden noch nichts, erst das Einrasten.
+    for (int i = 0; i < 3; ++i) TEST_ASSERT_EQUAL_INT(0, dec.update(kClickCw[i].a, kClickCw[i].b));
+    TEST_ASSERT_EQUAL_INT(+1, dec.update(kClickCw[3].a, kClickCw[3].b));
 }
 
-void test_detent_invert() {
-    DetentAccumulator acc(4, /*invert=*/true);
-    TEST_ASSERT_EQUAL_INT(-1, acc.add(4));
+void test_detent_back_and_forth_single_clicks() {
+    // Fehlerbild aus dem Geräte-Test von Schritt 0: ein Klick links, ein Klick rechts.
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    for (int i = 0; i < 10; ++i) {
+        TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 4));
+        TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 4));
+    }
 }
 
-void test_detent_two_steps_per_detent() {
-    DetentAccumulator acc(2);
-    TEST_ASSERT_EQUAL_INT(2, acc.add(4));
+void test_detent_back_and_forth_after_lost_step() {
+    // Regression: Ein durch Prellen verlorener Zwischenschritt darf keinen dauerhaften
+    // Versatz erzeugen (der alte Schrittzähler meldete danach beim Hin-und-her nichts mehr).
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    // Klick im Uhrzeigersinn, bei dem der Zustand 00 verpasst wird: 11 -> 01 -> 10 -> 11
+    const Level lossy[] = {{false, true}, {true, false}, {true, true}};
+    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, lossy, 3));
+    for (int i = 0; i < 5; ++i) {
+        TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 4));
+        TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 4));
+    }
 }
 
-void test_detent_clear() {
-    DetentAccumulator acc(4);
-    acc.add(3);
-    acc.clear();
-    TEST_ASSERT_EQUAL_INT(0, acc.add(1));
+void test_detent_half_turn_and_back_is_nothing() {
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    // Halb hin (11 -> 01 -> 00) und wieder zurück (00 -> 01 -> 11)
+    const Level seq[] = {{false, true}, {false, false}, {false, true}, {true, true}};
+    TEST_ASSERT_EQUAL_INT(0, feedLevels(dec, seq, 4));
+}
+
+void test_detent_bounce_at_rest_is_nothing() {
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    const Level seq[] = {{false, true}, {true, true}, {false, true}, {true, true}};
+    TEST_ASSERT_EQUAL_INT(0, feedLevels(dec, seq, 4));
+}
+
+void test_detent_many_clicks_fast() {
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    int sum = 0;
+    for (int i = 0; i < 25; ++i) sum += feedLevels(dec, kClickCw, 4);
+    TEST_ASSERT_EQUAL_INT(25, sum);
+}
+
+void test_detent_half_step_encoder() {
+    // Halbschritt-Encoder: Ruhelagen 11 und 00, je 2 Zustandswechsel pro Rastung.
+    RotaryDetentDecoder dec(/*halfStep=*/true);
+    dec.reset(true, true);
+    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 2));      // 11 -> 01 -> 00
+    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw + 2, 2));  // 00 -> 10 -> 11
+    TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 2));     // 11 -> 10 -> 00
+}
+
+void test_detent_last_step_for_diagnostics() {
+    RotaryDetentDecoder dec;
+    dec.reset(true, true);
+    dec.update(false, true);
+    TEST_ASSERT_EQUAL_INT(+1, dec.lastStep());
+    dec.update(false, true);
+    TEST_ASSERT_EQUAL_INT(0, dec.lastStep());
 }
 
 // --- ButtonDetector ---------------------------------------------------------
@@ -179,12 +234,15 @@ int main(int, char**) {
     RUN_TEST(test_quadrature_same_state_gives_zero);
     RUN_TEST(test_quadrature_invalid_jump_is_ignored);
     RUN_TEST(test_quadrature_contact_bounce_cancels_out);
-    RUN_TEST(test_detent_needs_full_steps);
-    RUN_TEST(test_detent_half_turn_back_is_nothing);
-    RUN_TEST(test_detent_many_steps_at_once);
-    RUN_TEST(test_detent_invert);
-    RUN_TEST(test_detent_two_steps_per_detent);
-    RUN_TEST(test_detent_clear);
+    RUN_TEST(test_detent_one_click_each_direction);
+    RUN_TEST(test_detent_reported_only_at_rest_position);
+    RUN_TEST(test_detent_back_and_forth_single_clicks);
+    RUN_TEST(test_detent_back_and_forth_after_lost_step);
+    RUN_TEST(test_detent_half_turn_and_back_is_nothing);
+    RUN_TEST(test_detent_bounce_at_rest_is_nothing);
+    RUN_TEST(test_detent_many_clicks_fast);
+    RUN_TEST(test_detent_half_step_encoder);
+    RUN_TEST(test_detent_last_step_for_diagnostics);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

@@ -78,6 +78,8 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 - [ ] 24 Rastungen ergeben eine volle Runde des Bogens
 - [ ] Schnell drehen: Der Zähler springt nicht zurück und verliert keine Schritte (grob prüfen: 10 Rastungen = +10)
 - [ ] Halbe Rastung und zurück: Der Zähler bleibt gleich
+- [ ] Hin und her, also abwechselnd ein Klick rechts und ein Klick links: Jeder Klick zählt (+1, −1, +1, …)
+- [ ] Im Log steht bei langsamem Drehen `ENC +1 (raw +4)` (raw = Rohschritte pro Rastung)
 
 **Taste**
 - [ ] Kurz drücken: Der Rand blitzt **blau** auf, Anzeige „Taste: kurz“, Log `BTN short`
@@ -100,6 +102,6 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 | Beobachtung | Mögliche Ursache / Anpassung |
 |---|---|
 | Rot und Blau vertauscht | R- und B-Pins in `board_config.h` tauschen. Bitte melden, dann passe ich das an. |
-| 1 Rastung = +2 oder +0,5 | `ENCODER_STEPS_PER_DETENT` auf 2 bzw. 8 |
-| Richtung falsch | `ENCODER_INVERT 1` |
+| Nur jede zweite Rastung zählt, Log zeigt `raw +2` | `ENCODER_HALF_STEP 1` in `board_config.h` |
+| Richtung falsch | `ENCODER_INVERT` in `board_config.h` umschalten (0 ↔ 1) |
 | Touch gespiegelt | melden, dann bekommt der Touch-Treiber eine Achsenumkehr |

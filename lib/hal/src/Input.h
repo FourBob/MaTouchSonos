@@ -7,16 +7,22 @@ namespace hal {
 /**
  * Drehring (Quadratur-Encoder) und Taste.
  *
- * Der Encoder wird per Interrupt auf beiden Signalen ausgewertet; die Hauptschleife
- * holt die seit dem letzten Aufruf gezählten Rohschritte mit takeEncoderSteps() ab.
- * Die Umrechnung in Rastungen und die Tastenlogik (kurz/lang) liegen in app_core.
+ * Der Encoder wird per Interrupt auf beiden Signalen ausgewertet (RotaryDetentDecoder
+ * aus app_core). Die Hauptschleife holt die seit dem letzten Aufruf abgeschlossenen
+ * Rastungen mit takeDetents() ab. Die Tastenlogik (kurz/lang) liegt in app_core.
  */
 class Input {
 public:
     static void begin();
 
-    /** Rohschritte seit dem letzten Aufruf (positiv = eine Richtung, negativ = andere). */
-    static int32_t takeEncoderSteps();
+    /**
+     * Rastungen seit dem letzten Aufruf.
+     * Positiv = im Uhrzeigersinn (Richtung über ENCODER_INVERT einstellbar).
+     */
+    static int32_t takeDetents();
+
+    /** Rohschritte seit dem letzten Aufruf – nur zur Diagnose (z. B. Schritte pro Rastung). */
+    static int32_t takeRawSteps();
 
     /** Aktueller, nicht entprellter Pegel der Taste (true = gedrückt). */
     static bool buttonRaw();

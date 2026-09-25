@@ -65,8 +65,10 @@
 #define ENCODER_PIN_B 10  // DT
 #define BUTTON_PIN    14  // aktiv LOW
 
-// Zustandswechsel pro spürbarer Rastung. Falls eine Rastung zwei Schritte zählt,
-// auf 2 ändern; falls man zwei Rastungen für einen Schritt braucht, auf 8.
-#define ENCODER_STEPS_PER_DETENT 4
-// Auf 1 setzen, wenn Drehen im Uhrzeigersinn die Werte verkleinert.
-#define ENCODER_INVERT 0
+// Encoder-Typ: 0 = Vollschritt (4 Zustandswechsel pro Rastung, Standard),
+//              1 = Halbschritt (2 Zustandswechsel pro Rastung).
+// Auf 1 setzen, wenn man zwei Rastungen für einen Schritt braucht.
+#define ENCODER_HALF_STEP 0
+// Drehrichtung: Auf diesem Board ist der Encoder so verdrahtet, dass der
+// Uhrzeigersinn ohne Umkehr negativ zählt (im Geräte-Test von Schritt 0 bestätigt).
+#define ENCODER_INVERT 1

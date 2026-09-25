@@ -7,17 +7,15 @@
 #include <lvgl.h>
 
 #include "ButtonDetector.h"
-#include "DetentAccumulator.h"
 #include "Display.h"
 #include "Input.h"
 #include "TestScreen.h"
-#include "board_config.h"
 
 namespace {
 
-app::DetentAccumulator detents(ENCODER_STEPS_PER_DETENT, ENCODER_INVERT != 0);
 app::ButtonDetector button;
 TestScreen screen;
+int32_t rawSinceLastDetent = 0;
 
 constexpr uint32_t kStatusLogIntervalMs = 5000;
 uint32_t lastStatusLog = 0;
@@ -60,10 +58,14 @@ void setup() {
 void loop() {
     const uint32_t now = millis();
 
-    const int32_t d = detents.add(hal::Input::takeEncoderSteps());
+    rawSinceLastDetent += hal::Input::takeRawSteps();
+    const int32_t d = hal::Input::takeDetents();
     if (d != 0) {
         screen.onDetents(d);
-        Serial.printf("ENC %+ld\n", static_cast<long>(d));
+        // raw = Rohschritte seit der letzten Meldung; bei langsamem Drehen ±4 pro Rastung
+        // (Vollschritt-Encoder) bzw. ±2 (Halbschritt). Nur zur Diagnose.
+        Serial.printf("ENC %+ld (raw %+ld)\n", static_cast<long>(d), static_cast<long>(rawSinceLastDetent));
+        rawSinceLastDetent = 0;
     }
 
     switch (button.update(hal::Input::buttonRaw(), now)) {

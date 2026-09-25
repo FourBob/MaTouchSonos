@@ -90,7 +90,7 @@ beim Drücken blinkt ein Kreis.
 - GitHub Actions: `pio run -e matouch` und `pio test -e native`
 
 **Tests**
-- T1: Quadratur-Decoder (inkl. Prellen), Rastungs-Zählung, Tasten-Erkennung (Entprellung, Kurz/Lang ab 600 ms, millis()-Überlauf) in `app_core`
+- T1: Quadratur-Decoder (inkl. Prellen), Rastungs-Erkennung mit Synchronisation in der Ruhelage (inkl. Hin-und-her und verlorener Schritte), Tasten-Erkennung (Entprellung, Kurz/Lang ab 600 ms, millis()-Überlauf) in `app_core`
 - T2: CI baut
 - T4 Checkliste:
   - [ ] Display zeigt Testbild, keine Farbverschiebung (Rot/Blau vertauscht?), rund zentriert

@@ -175,8 +175,8 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 | Display bleibt schwarz | Im Log nach `FEHLER: Display` suchen. PSRAM muss als OPI erkannt werden (`PSRAM: 8 MB` im Log). |
 | Farben vertauscht (Rot ↔ Blau) | Die drei Farbbalken oben auf dem Testbild prüfen und das Ergebnis melden. Die Pins in `board_config.h` werden dann angepasst. |
 | Kein serielles Log | Der USB-C-Port ist der native USB des ESP32-S3. Nach dem Flashen einmal RESET drücken und den Monitor neu verbinden. |
-| Ring zählt doppelt oder halb | In `include/board_config.h` `ENCODER_STEPS_PER_DETENT` anpassen (2, 4 oder 8). |
-| Ring läuft falsch herum | In `include/board_config.h` `ENCODER_INVERT` auf `1` setzen. |
+| Nur jede zweite Rastung zählt | In `include/board_config.h` `ENCODER_HALF_STEP` auf `1` setzen. Das Log zeigt dann `raw +2` statt `raw +4`. |
+| Ring läuft falsch herum | In `include/board_config.h` `ENCODER_INVERT` umschalten (0 ↔ 1). |
 | Upload schlägt fehl | Board in den Bootloader bringen (BOOT halten, RESET drücken), siehe oben. |
 
 ## Danksagung
