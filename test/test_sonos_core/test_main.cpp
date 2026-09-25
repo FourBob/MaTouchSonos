@@ -396,6 +396,37 @@ void test_favorites_play_method() {
     TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Queue);
 }
 
+void test_favorites_recorded() {
+    std::vector<Favorite> favs;
+    int total = 0;
+    TEST_ASSERT_TRUE(favorites::parseBrowse(fixtures::kFavoritesRecorded, favs, total));
+    TEST_ASSERT_EQUAL_INT(5, total);
+    TEST_ASSERT_EQUAL_INT(5, static_cast<int>(favs.size()));
+
+    TEST_ASSERT_EQUAL_STRING("Deutschlandfunk 91.3 (Nationale Nachrichten)", favs[0].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("TuneIn Sender", favs[0].description.c_str());
+    TEST_ASSERT_EQUAL_STRING("x-sonosapi-stream:s55737?sid=333&flags=8224&sn=11", favs[0].uri.c_str());
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[0]) == PlayMethod::Direct);
+
+    TEST_ASSERT_EQUAL_STRING("Von Queen", favs[1].description.c_str());
+    TEST_ASSERT_EQUAL_INT(0, favs[1].uri.rfind("x-sonosapi-hls-static:catalog%2ftracks%2fB00556W18I", 0));
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[1]) == PlayMethod::Queue);  // Amazon Music
+
+    TEST_ASSERT_EQUAL_STRING("If I Ain\xE2\x80\x99t Got You", favs[2].title.c_str());  // typografischer Apostroph
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[2]) == PlayMethod::Queue);
+
+    TEST_ASSERT_EQUAL_STRING("In Progress", favs[3].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("Aus Pocket Casts", favs[3].description.c_str());
+    TEST_ASSERT_TRUE(favs[3].uri.empty());  // <res></res>
+    TEST_ASSERT_EQUAL_STRING("object.container", favs[3].upnpClass.c_str());
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[3]) == PlayMethod::Unsupported);
+
+    TEST_ASSERT_EQUAL_STRING("Jazz-Funk", favs[4].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("object.container.playlistContainer", favs[4].upnpClass.c_str());
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[4]) == PlayMethod::Queue);
+    TEST_ASSERT_NOT_NULL(strstr(favs[4].metadata.c_str(), ">SA_RINCON2311_X_#Svc2311-0-Token</desc>"));
+}
+
 void test_favorites_empty_and_invalid() {
     std::vector<Favorite> favs;
     int total = -1;
@@ -732,6 +763,7 @@ int main(int, char**) {
     RUN_TEST(test_favorites_parse_all_kinds);
     RUN_TEST(test_favorites_visitor_positions);
     RUN_TEST(test_favorites_play_method);
+    RUN_TEST(test_favorites_recorded);
     RUN_TEST(test_favorites_empty_and_invalid);
     RUN_TEST(test_avtransport_queue_requests);
     RUN_TEST(test_art_resolve_redirect);

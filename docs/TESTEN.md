@@ -382,3 +382,11 @@ Die Ausgabe von `favorites list` bitte mitschicken (Namen der Kinder vorher erse
 - [ ] Beim nächsten Öffnen steht die Auswahl auf dem zuletzt gespielten Favoriten
 - [ ] Fehlerfall: Meldung in der Statuszeile (rot) und im Log `FAVORIT „…“ FEHLER: …` – bitte mitschicken
 
+**Experiment Pocket Casts** (Verknüpfung „In Progress“ ohne Adresse):
+```bash
+python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>
+```
+Baut aus den Metadaten eine Container-Adresse (`x-rincon-cpcontainer:<id>?sid=233&flags=…&sn=…`) und
+probiert, sie in die Warteschlange zu legen (Warteschlange wird geleert). Bei Erfolg zeigt es die
+funktionierende Adresse – dann kann die Firmware solche Verknüpfungen ebenfalls starten.
+

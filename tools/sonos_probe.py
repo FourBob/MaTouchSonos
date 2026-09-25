@@ -22,6 +22,7 @@ Beispiele:
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out nowplaying
   python3 tools/sonos_probe.py 192.168.1.50 favorites list      # Sonos-Favoriten und wie sie starten
   python3 tools/sonos_probe.py 192.168.1.50 favorites play 3    # Favorit Nr. 3 abspielen (am Koordinator!)
+  python3 tools/sonos_probe.py 192.168.1.50 favorites try 3     # Experiment: Verknüpfung als Container starten
 """
 
 from __future__ import annotations  # Typangaben auch mit Python 3.8/3.9 (macOS-Standard)
@@ -356,6 +357,81 @@ def device_uuid(ip: str) -> str:
     return (element(xml, "UDN") or "").replace("uuid:", "")
 
 
+def service_account_serial(ip: str, service_type: str) -> str | None:
+    """Kontonummer (sn) eines Dienstes aus /status/accounts – nicht jede Firmware liefert das noch."""
+    try:
+        with urllib.request.urlopen(f"http://{ip}:{PORT}/status/accounts", timeout=3) as resp:
+            xml = resp.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, TimeoutError):
+        return None
+    m = re.search(rf'<Account[^>]*Type="{service_type}"[^>]*SerialNum="(\d+)"', xml) or \
+        re.search(rf'<Account[^>]*SerialNum="(\d+)"[^>]*Type="{service_type}"', xml)
+    return m.group(1) if m else None
+
+
+def try_shortcut(ip: str, fav: dict, save: str | None) -> int:
+    """
+    Experiment für Verknüpfungen ohne Adresse (z. B. Pocket Casts „In Progress“): aus den Metadaten eine
+    Container-Adresse bauen (x-rincon-cpcontainer:<id>?sid=…&flags=…&sn=…) und in die Warteschlange legen.
+    Ob der Dienst das mitmacht, zeigt nur der Versuch.
+    """
+    meta = fav["metadata"]
+    item_id = re.search(r'<item id="([^"]+)"', meta)
+    desc = re.search(r"SA_RINCON(\d+)_", meta)
+    if not item_id or not desc:
+        print("  Keine Container-ID oder Dienst-Kennung in den Metadaten – geht nicht.")
+        return 1
+    service_type = desc.group(1)
+    sid = (int(service_type) - 7) // 256
+    print(f"  Container-ID: {item_id.group(1)}   Dienst: sid={sid} (Typ {service_type})")
+
+    serial = service_account_serial(ip, service_type)
+    if serial:
+        print(f"  Kontonummer laut /status/accounts: sn={serial}")
+        serials = [serial]
+    else:
+        print("  /status/accounts liefert keine Kontonummer – probiere sn=1…20 und ohne sn")
+        serials = [str(n) for n in range(1, 21)] + [None]
+    metas = [meta, meta.replace("<upnp:class>object.container</upnp:class>",
+                                "<upnp:class>object.container.playlistContainer</upnp:class>")]
+    if metas[1] == metas[0]:
+        metas.pop()
+
+    print("  ACHTUNG: Die Warteschlange wird geleert.")
+    req, status, resp, ms = soap(ip, "AVTransport", "RemoveAllTracksFromQueue", [("InstanceID", "0")])
+    if not report("RemoveAllTracksFromQueue", req, status, resp, ms, None):
+        return 1
+    tried = 0
+    for meta_variant in metas:
+        for flags in ("8300", "0"):
+            for sn in serials:
+                uri = f"x-rincon-cpcontainer:{item_id.group(1)}?sid={sid}&flags={flags}" + (f"&sn={sn}" if sn else "")
+                req, status, resp, ms = soap(ip, "AVTransport", "AddURIToQueue",
+                                             [("InstanceID", "0"), ("EnqueuedURI", uri),
+                                              ("EnqueuedURIMetaData", meta_variant),
+                                              ("DesiredFirstTrackNumberEnqueued", "0"), ("EnqueueAsNext", "0")])
+                tried += 1
+                added = element(resp, "NumTracksAdded")
+                if status == 200 and element(resp, "Fault") is None and added not in (None, "0"):
+                    print(f"  ERFOLG nach {tried} Versuchen: {added} Folgen in der Warteschlange")
+                    print(f"  Adresse: {uri}")
+                    if meta_variant is not meta:
+                        print("  (mit Inhaltsart object.container.playlistContainer)")
+                    report("AddURIToQueue", req, status, resp, ms, save)
+                    queue = f"x-rincon-queue:{device_uuid(ip)}#0"
+                    for action, a in [("SetAVTransportURI", [("InstanceID", "0"), ("CurrentURI", queue),
+                                                             ("CurrentURIMetaData", "")]),
+                                      ("Play", [("InstanceID", "0"), ("Speed", "1")])]:
+                        req, status, resp, ms = soap(ip, "AVTransport", action, a)
+                        if not report(action, req, status, resp, ms, save):
+                            return 1
+                    return 0
+    code = element(resp, "errorCode")
+    print(f"  Kein Erfolg nach {tried} Versuchen (letzter UPnP-Fehler: {code or '–'}).")
+    print("  Pocket Casts lässt diesen Ordner offenbar nicht direkt in die Warteschlange legen.")
+    return 1
+
+
 def cmd_favorites(ip: str, args) -> int:
     """Sonos-Favoriten lesen bzw. einen abspielen – genau wie die Firmware (Schritt 7)."""
     ok, favs, total = browse_favorites(ip, 0, 100, args.save)
@@ -373,6 +449,8 @@ def cmd_favorites(ip: str, args) -> int:
         print(f"Favorit {args.index} gibt es nicht (0..{len(favs) - 1})")
         return 1
     fav = favs[args.index]
+    if args.op == "try":
+        return try_shortcut(ip, fav, args.save)
     method = play_method(fav)
     print(f"  Starte „{fav['title']}“ – {method}")
     steps = []
@@ -429,6 +507,8 @@ def main() -> int:
     fv_sub.add_parser("list")
     fvp = fv_sub.add_parser("play")
     fvp.add_argument("index", type=int, help="Nummer aus „favorites list“")
+    fvt = fv_sub.add_parser("try", help="Experiment: Verknüpfung ohne Adresse als Container starten")
+    fvt.add_argument("index", type=int, help="Nummer aus „favorites list“")
 
     gv = sub.add_parser("groupvolume", help="Gruppenlautstärke am Koordinator lesen/setzen")
     gv_sub = gv.add_subparsers(dest="op", required=True)
