@@ -176,13 +176,15 @@ src/
   HwTestApp.cpp         Hardware-Test (Schritt 0)
   VolumeScreen.*        Lautstärke-Bildschirm
   TestScreen.*          Hardware-Testbildschirm
-  fonts/                Schriften mit Umlauten (erzeugt mit tools/gen_fonts.sh)
+  fonts/                Schrift Inter mit Umlauten (erzeugt mit tools/gen_fonts.sh)
 test/
   test_app_core/        Unit-Tests Bedienlogik
   test_sonos_core/      Unit-Tests Sonos-Protokoll, inkl. Testdaten (fixtures.h)
 tools/
   sonos_probe.py        Sonos-Befehle vom PC aus testen (T3)
   gen_fonts.sh          Schriften neu erzeugen
+assets/
+  fonts/                Schrift-Quellen (Inter, Symbole) mit Lizenzen
 docs/
   ENTWICKLUNGSPLAN.md   Schritte, Akzeptanzkriterien, Teststrategie
   ARCHITEKTUR.md        Aufbau der Software und Designentscheidungen
@@ -211,6 +213,7 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 
 - [Makerfabs](https://github.com/Makerfabs/MaTouch-ESP32-S3-Rotary-IPS-Display-with-Touch-2.1-ST7701) für Beispielcode und Schaltplan
 - [LVGL](https://lvgl.io/) und [Arduino_GFX](https://github.com/moononournation/Arduino_GFX)
+- Schrift [Inter](https://rsms.me/inter/) von Rasmus Andersson (SIL Open Font License), Symbole von Font Awesome Free
 - Die Sonos-Community, die die lokale UPnP-Schnittstelle dokumentiert hat, z. B. [SoCo](https://github.com/SoCo/SoCo) und [sonos.svrooij.io](https://sonos.svrooij.io/)
 
 Dieses Projekt ist nicht mit Sonos, Inc. verbunden. „Sonos“ ist eine Marke von Sonos, Inc.

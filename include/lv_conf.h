@@ -45,13 +45,17 @@
 #define LV_USE_PERF_MONITOR_POS LV_ALIGN_BOTTOM_MID
 
 /* --- Schriften ------------------------------------------------------------
- * Eigene Schriften mit Umlauten und LVGL-Symbolen (src/fonts/, erzeugt mit
- * tools/gen_fonts.sh). Die eingebauten Montserrat-Schriften haben nur ASCII und
- * sind deshalb abgeschaltet. Verwendung: &font_de_14, &font_de_20, &font_de_28, &font_de_48 */
+ * Inter (SIL Open Font License) mit Umlauten und LVGL-Symbolen, erzeugt mit
+ * tools/gen_fonts.sh aus assets/fonts/. Die eingebauten Montserrat-Schriften haben
+ * nur ASCII und sind deshalb abgeschaltet.
+ *   &font_inter_14, &font_inter_20   Inter Medium   – Text
+ *   &font_inter_28, &font_inter_48   Inter SemiBold – Überschriften
+ *   &font_num_96                     Inter SemiBold – nur Ziffern, große Zahlen */
 #define LV_FONT_MONTSERRAT_14 0
-#define LV_FONT_CUSTOM_DECLARE \
-    LV_FONT_DECLARE(font_de_14) LV_FONT_DECLARE(font_de_20) LV_FONT_DECLARE(font_de_28) LV_FONT_DECLARE(font_de_48)
-#define LV_FONT_DEFAULT &font_de_20
+#define LV_FONT_CUSTOM_DECLARE                                                         \
+    LV_FONT_DECLARE(font_inter_14) LV_FONT_DECLARE(font_inter_20) LV_FONT_DECLARE(font_inter_28) \
+    LV_FONT_DECLARE(font_inter_48) LV_FONT_DECLARE(font_num_96)
+#define LV_FONT_DEFAULT &font_inter_20
 
 /* --- Theme ---------------------------------------------------------------- */
 #define LV_USE_THEME_DEFAULT 1

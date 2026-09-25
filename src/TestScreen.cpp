@@ -86,7 +86,7 @@ void TestScreen::create() {
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 130);
 
     counterLabel = lv_label_create(scr);
-    lv_obj_set_style_text_font(counterLabel, &font_de_48, 0);
+    lv_obj_set_style_text_font(counterLabel, &font_num_96, 0);
     lv_obj_align(counterLabel, LV_ALIGN_CENTER, 0, 0);
 
     buttonLabel = lv_label_create(scr);
@@ -94,7 +94,7 @@ void TestScreen::create() {
 
     touchLabel = lv_label_create(scr);
     lv_label_set_text(touchLabel, "Touch -");
-    lv_obj_set_style_text_font(touchLabel, &font_de_14, 0);
+    lv_obj_set_style_text_font(touchLabel, &font_inter_14, 0);
     lv_obj_align(touchLabel, LV_ALIGN_CENTER, 0, 85);
 
     touchDot = lv_obj_create(scr);

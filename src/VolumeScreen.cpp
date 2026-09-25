@@ -39,25 +39,25 @@ void VolumeScreen::create(const char* speakerLabel) {
     lv_obj_t* caption = lv_label_create(scr);
     lv_label_set_text(caption, "Lautstärke");
     lv_obj_set_style_text_color(caption, lv_color_hex(kTextDim), 0);
-    lv_obj_align(caption, LV_ALIGN_CENTER, 0, -70);
+    lv_obj_align(caption, LV_ALIGN_CENTER, 0, -90);
 
     valueLabel = lv_label_create(scr);
-    lv_obj_set_style_text_font(valueLabel, &font_de_48, 0);
+    lv_obj_set_style_text_font(valueLabel, &font_num_96, 0);
     lv_obj_set_style_text_color(valueLabel, lv_color_white(), 0);
-    lv_obj_align(valueLabel, LV_ALIGN_CENTER, 0, -10);
+    lv_obj_align(valueLabel, LV_ALIGN_CENTER, 0, 0);
 
     lv_obj_t* speaker = lv_label_create(scr);
     lv_label_set_text(speaker, speakerLabel);
-    lv_obj_set_style_text_font(speaker, &font_de_14, 0);
+    lv_obj_set_style_text_font(speaker, &font_inter_14, 0);
     lv_obj_set_style_text_color(speaker, lv_color_hex(kTextDim), 0);
-    lv_obj_align(speaker, LV_ALIGN_CENTER, 0, 45);
+    lv_obj_align(speaker, LV_ALIGN_CENTER, 0, 75);
 
     // Statuszeile in der Lücke des Bogens unten.
     statusLabel = lv_label_create(scr);
     lv_obj_set_width(statusLabel, 260);
     lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(statusLabel, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(statusLabel, &font_de_14, 0);
+    lv_obj_set_style_text_font(statusLabel, &font_inter_14, 0);
     lv_obj_align(statusLabel, LV_ALIGN_BOTTOM_MID, 0, -40);
 
     setVolume(0, false);

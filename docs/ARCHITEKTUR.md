@@ -88,7 +88,7 @@ Anzeige ◀── pollEvent() ◀── [Event-Queue] ◀── WLAN-/Speaker-Zu
 | LVGL 8.3 statt 9.x | Stabil, gut dokumentiert, Makerfabs nutzt 8.3. Ein Umstieg ist später möglich. |
 | Ein Thread für die UI | LVGL ist nicht threadsicher. Alle `lv_*`-Aufrufe laufen in `loop()`, das Netzwerk bekommt später eine eigene Task mit Nachrichten-Queue. |
 | WLAN fest im Code (`secrets.h`) | Wunsch des Projekts: einfach und ohne Setup-Portal. Die Datei ist per `.gitignore` geschützt. |
-| Eigene Schriften (`src/fonts/`) | Die LVGL-Schriften haben nur ASCII. Die eigenen enthalten Latin-1 (Umlaute, ß) und die LVGL-Symbole. Neu erzeugen mit `tools/gen_fonts.sh`. |
+| Schrift Inter (`src/fonts/`) | Klar und sehr gut lesbar, besonders bei Zahlen. Die eingebauten LVGL-Schriften haben nur ASCII. Die eigenen enthalten Latin-1 (Umlaute, ß) und die LVGL-Symbole. Medium für Text, SemiBold für Überschriften, eine 96-px-Ziffernschrift für die Lautstärke. Neu erzeugen mit `tools/gen_fonts.sh`. |
 | Zwei Firmware-Varianten | `matouch` (Fernbedienung) und `matouch_hwtest` (Hardware-Test) teilen sich `hal` und `app_core`. So bleibt der Hardware-Test jederzeit verfügbar. |
 | C++17 | Für `constexpr`/`inline`-Member und bessere Typsicherheit. Wird in `platformio.ini` gesetzt. |
 
