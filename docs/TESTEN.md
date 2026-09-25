@@ -127,7 +127,7 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 
 ---
 
-## Checkliste Schritt 1 – Lautstärke eines Speakers
+## Checkliste Schritt 1 – Lautstärke eines Speakers ✅
 
 **Vorbereitung**
 1. `include/secrets.h` anlegen und ausfüllen (siehe README, Abschnitt 3): WLAN-Name, Passwort,
@@ -172,3 +172,34 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 **Bekannt und gewollt in Schritt 1**
 - Ändert man die Lautstärke in der Sonos-App, folgt das Display noch **nicht**. Das kommt in Schritt 2.
 - Die Taste hat noch keine Funktion (Log: `BTN short (Play/Pause folgt in Schritt 2)`).
+
+---
+
+## Checkliste Schritt 2 – Play/Pause und Abgleich mit der Sonos-App
+
+**T3 zuerst** (am Mac, Speaker-IP wie in `secrets.h`):
+```bash
+python3 tools/sonos_probe.py <IP> --save probe-out transport info
+python3 tools/sonos_probe.py <IP> --save probe-out transport pause
+python3 tools/sonos_probe.py <IP> --save probe-out transport play
+```
+- [ ] `transport info` zeigt `Zustand: PLAYING` bzw. `PAUSED_PLAYBACK`
+- [ ] `pause` und `play` wirken hörbar
+- [ ] Die Dateien `probe-out/GetTransportInfo_*.xml`, `Play_*.xml` und `Pause_*.xml` mitschicken
+
+**Am Gerät** (`pio run -e matouch -t upload`):
+- [ ] Nach dem Start steht unter der Zahl der richtige Zustand: `▶ Wiedergabe`, `❚❚ Pausiert` oder `■ Gestoppt`
+- [ ] Kurz drücken bei laufender Musik: sofort `❚❚ Pausiert`, Zahl und Bogen werden grau, die Musik stoppt,
+      Log `BTN short -> Pause` und `SONOS Pause ok`
+- [ ] Nochmal kurz drücken: `▶ Wiedergabe`, die Musik läuft weiter, Log `SONOS Play ok`
+- [ ] 5× schnell hintereinander drücken: Am Ende stimmen Anzeige und Speaker überein
+- [ ] **In der Sonos-App** pausieren/starten: Das Display folgt innerhalb von ca. 2 s
+- [ ] **In der Sonos-App** die Lautstärke ändern: Zahl und Bogen folgen innerhalb von ca. 2 s
+- [ ] Während du am Ring drehst, springt die Zahl nicht zurück
+- [ ] Radiosender (falls vorhanden): Drücken pausiert bzw. stoppt, dann `■ Gestoppt` oder `❚❚ Pausiert`
+- [ ] Langdruck löst **kein** Play/Pause aus (Log `BTN long (Menü folgt in Schritt 4)`)
+
+**Fehlerfälle** (falls einfach herstellbar):
+- [ ] Speaker in der Sonos-App zu einer Gruppe hinzufügen, in der ein **anderer** Speaker führt, dann drücken:
+      rote Meldung „Speaker ist Teil einer Gruppe …“ für ca. 4 s, Anzeige springt auf den alten Zustand zurück
+- [ ] 10 Minuten laufen lassen: `heap_frei` stabil, kein Neustart

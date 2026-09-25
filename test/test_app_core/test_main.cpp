@@ -7,11 +7,15 @@
 
 #include "ButtonDetector.h"
 #include "DetentTracker.h"
+#include "PlaybackController.h"
 #include "VolumeController.h"
 
 using app::ButtonDetector;
 using app::ButtonEvent;
 using app::DetentTracker;
+using app::PlaybackController;
+using app::PlayState;
+using app::TransportCommand;
 using app::VolumeController;
 
 void setUp() {}
@@ -213,6 +217,84 @@ void test_volume_invalidate_blocks_input_until_new_value() {
     TEST_ASSERT_EQUAL_INT(22, vc.value());
 }
 
+// --- PlaybackController -------------------------------------------------------
+
+void test_playback_no_toggle_while_unknown() {
+    PlaybackController pc;
+    TransportCommand cmd;
+    TEST_ASSERT_FALSE(pc.toggle(0, cmd));
+}
+
+void test_playback_toggle_pauses_when_playing_and_plays_when_paused() {
+    PlaybackController pc;
+    TransportCommand cmd;
+    pc.onRemoteState(PlayState::Playing, 0);
+    TEST_ASSERT_TRUE(pc.toggle(1000, cmd));
+    TEST_ASSERT_TRUE(cmd == TransportCommand::Pause);
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Paused);  // sofort (optimistisch)
+    pc.onRemoteState(PlayState::Paused, 1200);          // Bestätigung
+    TEST_ASSERT_TRUE(pc.toggle(2000, cmd));
+    TEST_ASSERT_TRUE(cmd == TransportCommand::Play);
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Playing);
+}
+
+void test_playback_stopped_and_transitioning() {
+    PlaybackController pc;
+    TransportCommand cmd;
+    pc.onRemoteState(PlayState::Stopped, 0);
+    pc.toggle(10, cmd);
+    TEST_ASSERT_TRUE(cmd == TransportCommand::Play);
+    PlaybackController pc2;
+    pc2.onRemoteState(PlayState::Transitioning, 0);
+    pc2.toggle(10, cmd);
+    TEST_ASSERT_TRUE(cmd == TransportCommand::Pause);
+}
+
+void test_playback_stale_state_ignored_during_holdoff() {
+    PlaybackController pc(2500);
+    TransportCommand cmd;
+    pc.onRemoteState(PlayState::Paused, 0);
+    pc.toggle(1000, cmd);                                        // -> Playing
+    TEST_ASSERT_FALSE(pc.onRemoteState(PlayState::Paused, 1300));        // veraltet
+    TEST_ASSERT_FALSE(pc.onRemoteState(PlayState::Transitioning, 1600)); // Puffern
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Playing);
+}
+
+void test_playback_speaker_wins_after_holdoff() {
+    PlaybackController pc(2500);
+    TransportCommand cmd;
+    pc.onRemoteState(PlayState::Paused, 0);
+    pc.toggle(1000, cmd);
+    TEST_ASSERT_TRUE(pc.onRemoteState(PlayState::Paused, 4000));  // Speaker spielt nicht
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Paused);
+}
+
+void test_playback_follows_app_changes_when_idle() {
+    PlaybackController pc;
+    pc.onRemoteState(PlayState::Playing, 0);
+    TEST_ASSERT_TRUE(pc.onRemoteState(PlayState::Paused, 5000));  // in der Sonos-App pausiert
+    TEST_ASSERT_FALSE(pc.onRemoteState(PlayState::Paused, 6000)); // keine Änderung
+}
+
+void test_playback_command_failed_reverts() {
+    PlaybackController pc;
+    TransportCommand cmd;
+    pc.onRemoteState(PlayState::Stopped, 0);
+    pc.toggle(100, cmd);
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Playing);
+    pc.onCommandFailed();
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Stopped);
+}
+
+void test_playback_invalidate() {
+    PlaybackController pc;
+    TransportCommand cmd;
+    pc.onRemoteState(PlayState::Playing, 0);
+    pc.invalidate();
+    TEST_ASSERT_TRUE(pc.state() == PlayState::Unknown);
+    TEST_ASSERT_FALSE(pc.toggle(10, cmd));
+}
+
 // --- ButtonDetector ---------------------------------------------------------
 
 // Hilfsfunktion: hält einen Pegel über eine Zeitspanne und sammelt Ereignisse.
@@ -298,6 +380,14 @@ int main(int, char**) {
     RUN_TEST(test_volume_remote_value_ignored_while_user_turns);
     RUN_TEST(test_volume_remote_value_ignored_while_send_pending);
     RUN_TEST(test_volume_invalidate_blocks_input_until_new_value);
+    RUN_TEST(test_playback_no_toggle_while_unknown);
+    RUN_TEST(test_playback_toggle_pauses_when_playing_and_plays_when_paused);
+    RUN_TEST(test_playback_stopped_and_transitioning);
+    RUN_TEST(test_playback_stale_state_ignored_during_holdoff);
+    RUN_TEST(test_playback_speaker_wins_after_holdoff);
+    RUN_TEST(test_playback_follows_app_changes_when_idle);
+    RUN_TEST(test_playback_command_failed_reverts);
+    RUN_TEST(test_playback_invalidate);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

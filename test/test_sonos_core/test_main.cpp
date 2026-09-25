@@ -5,6 +5,7 @@
 
 #include <string>
 
+#include "AVTransport.h"
 #include "RenderingControl.h"
 #include "Soap.h"
 #include "Xml.h"
@@ -71,10 +72,10 @@ void test_soap_set_volume_is_clamped() {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, rendering::setVolume(-3).body.find("<DesiredVolume>0</DesiredVolume>"));
 }
 
-void test_soap_get_volume_request() {
+void test_soap_get_volume_request_matches_recorded() {
     const SoapRequest req = rendering::getVolume();
     TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume\"", req.soapAction.c_str());
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, req.body.find("<InstanceID>0</InstanceID><Channel>Master</Channel></u:GetVolume>"));
+    TEST_ASSERT_EQUAL_STRING(fixtures::kGetVolumeRequest, req.body.c_str());
 }
 
 void test_soap_arguments_are_escaped() {
@@ -112,7 +113,7 @@ void test_soap_evaluate_connection_errors() {
 void test_parse_get_volume() {
     int v = -1;
     TEST_ASSERT_TRUE(rendering::parseGetVolume(fixtures::kGetVolumeResponse, v));
-    TEST_ASSERT_EQUAL_INT(23, v);
+    TEST_ASSERT_EQUAL_INT(12, v);
 }
 
 void test_parse_get_volume_rejects_garbage() {
@@ -122,6 +123,42 @@ void test_parse_get_volume_rejects_garbage() {
     TEST_ASSERT_FALSE(rendering::parseGetVolume("<CurrentVolume>101</CurrentVolume>", v));
     TEST_ASSERT_FALSE(rendering::parseGetVolume(fixtures::kFault402, v));
     TEST_ASSERT_EQUAL_INT(7, v);  // unverändert
+}
+
+// --- AVTransport ---------------------------------------------------------------
+
+void test_avtransport_play_request_is_exact() {
+    const SoapRequest req = avtransport::play();
+    TEST_ASSERT_EQUAL_STRING("/MediaRenderer/AVTransport/Control", req.path.c_str());
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#Play\"", req.soapAction.c_str());
+    TEST_ASSERT_EQUAL_STRING(fixtures::kPlayRequest, req.body.c_str());
+}
+
+void test_avtransport_pause_stop_info_requests() {
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#Pause\"", avtransport::pause().soapAction.c_str());
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, avtransport::pause().body.find("<u:Pause xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"><InstanceID>0</InstanceID></u:Pause>"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, avtransport::stop().body.find("<InstanceID>0</InstanceID></u:Stop>"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, avtransport::getTransportInfo().body.find("<InstanceID>0</InstanceID></u:GetTransportInfo>"));
+}
+
+void test_avtransport_parse_transport_info() {
+    TransportState st = TransportState::Unknown;
+    TEST_ASSERT_TRUE(avtransport::parseTransportInfo(fixtures::kGetTransportInfoPlaying, st));
+    TEST_ASSERT_TRUE(st == TransportState::Playing);
+}
+
+void test_avtransport_parse_all_states() {
+    TEST_ASSERT_TRUE(avtransport::parseTransportState("PLAYING") == TransportState::Playing);
+    TEST_ASSERT_TRUE(avtransport::parseTransportState("PAUSED_PLAYBACK") == TransportState::Paused);
+    TEST_ASSERT_TRUE(avtransport::parseTransportState("STOPPED") == TransportState::Stopped);
+    TEST_ASSERT_TRUE(avtransport::parseTransportState("NO_MEDIA_PRESENT") == TransportState::Stopped);
+    TEST_ASSERT_TRUE(avtransport::parseTransportState("TRANSITIONING") == TransportState::Transitioning);
+    TEST_ASSERT_TRUE(avtransport::parseTransportState("QUATSCH") == TransportState::Unknown);
+}
+
+void test_avtransport_parse_rejects_fault() {
+    TransportState st = TransportState::Playing;
+    TEST_ASSERT_FALSE(avtransport::parseTransportInfo(fixtures::kFault402, st));
 }
 
 int main(int, char**) {
@@ -134,7 +171,7 @@ int main(int, char**) {
     RUN_TEST(test_xml_unescape_numeric_entities_to_utf8);
     RUN_TEST(test_soap_set_volume_request_is_exact);
     RUN_TEST(test_soap_set_volume_is_clamped);
-    RUN_TEST(test_soap_get_volume_request);
+    RUN_TEST(test_soap_get_volume_request_matches_recorded);
     RUN_TEST(test_soap_arguments_are_escaped);
     RUN_TEST(test_soap_evaluate_ok);
     RUN_TEST(test_soap_evaluate_fault_with_upnp_code);
@@ -142,5 +179,10 @@ int main(int, char**) {
     RUN_TEST(test_soap_evaluate_connection_errors);
     RUN_TEST(test_parse_get_volume);
     RUN_TEST(test_parse_get_volume_rejects_garbage);
+    RUN_TEST(test_avtransport_play_request_is_exact);
+    RUN_TEST(test_avtransport_pause_stop_info_requests);
+    RUN_TEST(test_avtransport_parse_transport_info);
+    RUN_TEST(test_avtransport_parse_all_states);
+    RUN_TEST(test_avtransport_parse_rejects_fault);
     return UNITY_END();
 }

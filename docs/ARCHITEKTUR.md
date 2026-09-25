@@ -16,7 +16,7 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ src/            main.cpp → RemoteApp / HwTestApp          │
-│                 VolumeScreen, TestScreen, fonts/          │
+│                 MainScreen, TestScreen, fonts/            │
 ├──────────────────────────────────────────────────────────┤
 │ (lib/ui/        Bildschirme wandern hierher, sobald es    │
 │                 mehrere gibt – ab Schritt 3)              │
@@ -25,8 +25,8 @@
 │  DetentTracker                │  SOAP-Envelopes, XML-    │
 │                               │  und DIDL-Parser,        │
 │  ButtonDetector               │  RenderingControl        │
-│  VolumeController             │  (Topologie ab Schritt 5)│
-│  Zustandsmaschine (ab 2/4)    │                          │
+│  VolumeController             │  AVTransport             │
+│  PlaybackController           │  (Topologie ab Schritt 5)│
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
 │ lib/net/        WLAN, HTTP, SSDP (ab Schritt 1/5)         │
@@ -72,9 +72,12 @@ Touch ◀──I2C-Polling── LVGL-Eingabetreiber
 Kern 1: loop()                                   Kern 0: SonosLink-Task
 ─────────────────                                ─────────────────────
 Drehring → VolumeController                      WLAN aufbauen / überwachen
-   │  (Anzeige sofort, Drossel 150 ms)           GetVolume nach Start/Fehler
+   │  (Anzeige sofort, Drossel 150 ms)           alle 1,5 s: GetTransportInfo + GetVolume
    └─ setVolume(v) ──▶ [Queue, Länge 1] ──▶ SetVolume an Speaker (HTTP, Port 1400)
                         (neuester Wert gewinnt)
+Taste → PlaybackController
+   │  (Anzeige sofort)
+   └─ transport(cmd) ─▶ [Queue, Länge 4] ──▶ Play / Pause (Pause abgelehnt → Stop)
 Anzeige ◀── pollEvent() ◀── [Event-Queue] ◀── WLAN-/Speaker-Zustand, Lautstärke, Fehler
 ```
 
@@ -82,6 +85,9 @@ Anzeige ◀── pollEvent() ◀── [Event-Queue] ◀── WLAN-/Speaker-Zu
 - Die UI wartet nie auf das Netz. Ein HTTP-Timeout (bis 2 s) bremst nur die Netzwerk-Task.
 - Die Queue für die Lautstärke hat die Länge 1 und wird überschrieben. Beim schnellen Drehen
   sammeln sich deshalb keine veralteten Befehle an.
+- **Konfliktregeln** (beide in `app_core`, getestet): Werte vom Speaker überschreiben die Anzeige
+  nicht, solange der Nutzer gerade dreht (1 s) bzw. ein Play/Pause noch unbestätigt ist (2,5 s).
+  Danach gewinnt der Speaker. So folgen Änderungen aus der Sonos-App, ohne dass die Anzeige springt.
 - Nach jedem Fehler gilt die Lautstärke als unbekannt (Anzeige „–“, Drehen gesperrt), bis
   GetVolume wieder eine Antwort liefert. So zeigt das Display nie einen Wert an, den der Speaker nicht hat.
 

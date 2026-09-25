@@ -12,7 +12,9 @@ Beispiele:
   python3 tools/sonos_probe.py 192.168.1.50 info
   python3 tools/sonos_probe.py 192.168.1.50 volume get
   python3 tools/sonos_probe.py 192.168.1.50 volume set 25
-  python3 tools/sonos_probe.py 192.168.1.50 volume get --save probe-out
+  python3 tools/sonos_probe.py 192.168.1.50 transport info
+  python3 tools/sonos_probe.py 192.168.1.50 transport pause
+  python3 tools/sonos_probe.py 192.168.1.50 --save probe-out transport info
 """
 
 from __future__ import annotations  # Typangaben auch mit Python 3.8/3.9 (macOS-Standard)
@@ -123,6 +125,27 @@ def cmd_volume(ip: str, args) -> int:
     return 0 if ok else 1
 
 
+def cmd_transport(ip: str, args) -> int:
+    actions = {
+        "info": ("GetTransportInfo", [("InstanceID", "0")]),
+        "play": ("Play", [("InstanceID", "0"), ("Speed", "1")]),
+        "pause": ("Pause", [("InstanceID", "0")]),
+        "stop": ("Stop", [("InstanceID", "0")]),
+    }
+    action, soap_args = actions[args.op]
+    req, status, resp, ms = soap(ip, "AVTransport", action, soap_args)
+    ok = report(action, req, status, resp, ms, args.save)
+    if ok and args.op == "info":
+        print(f"  Zustand: {element(resp, 'CurrentTransportState')}")
+    elif not ok:
+        code = element(resp, "errorCode")
+        hints = {"701": "Nichts zum Abspielen bzw. Aktion im aktuellen Zustand nicht möglich",
+                 "800": "Speaker ist Mitglied einer Gruppe – Befehl an den Gruppen-Koordinator senden"}
+        if code in hints:
+            print(f"  Hinweis: {hints[code]}")
+    return 0 if ok else 1
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Sonos-Befehle vom PC testen (T3).")
     p.add_argument("ip", help="IP-Adresse des Speakers")
@@ -137,9 +160,12 @@ def main() -> int:
     vset = vol_sub.add_parser("set")
     vset.add_argument("value", type=int, help="0..100")
 
+    tr = sub.add_parser("transport", help="Wiedergabe: Zustand lesen, Play, Pause, Stop")
+    tr.add_argument("op", choices=["info", "play", "pause", "stop"])
+
     args = p.parse_args()
     try:
-        return {"info": cmd_info, "volume": cmd_volume}[args.command](args.ip, args)
+        return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport}[args.command](args.ip, args)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         print(f"Speaker unter {args.ip}:{PORT} nicht erreichbar: {e}")
         return 1

@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 1 von 9: Der Drehring regelt die Lautstärke eines Sonos-Speakers.
+> **Projektstand:** Schritt 2 von 9: Lautstärke per Drehring und Play/Pause per Taste an einem Sonos-Speaker.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -33,8 +33,8 @@ Außen läuft der Fortschrittsbogen.
 | Schritt | Funktion | Status |
 |---|---|---|
 | 0 | Hardware läuft: Display, Touch, Drehring, Taste | ✅ getestet |
-| 1 | Lautstärke eines Speakers mit dem Ring regeln | 🧪 wartet auf Geräte-Test |
-| 2 | Play/Pause mit Statusanzeige | ⏳ |
+| 1 | Lautstärke eines Speakers mit dem Ring regeln | ✅ getestet |
+| 2 | Play/Pause mit Statusanzeige | 🧪 wartet auf Geräte-Test |
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ⏳ |
 | 4 | Ringmenü und Scrubbing | ⏳ |
 | 5 | Räume automatisch finden und wählen | ⏳ |
@@ -153,6 +153,7 @@ Für die Fernbedienung also selbst bauen. Für den Hardware-Test reicht die CI-F
 pio test -e native                                  # Unit-Tests auf dem PC, kein Board nötig
 pio run  -e matouch                                 # Firmware bauen
 python3 tools/sonos_probe.py <Speaker-IP> volume get  # Sonos-Befehl vom PC aus testen
+python3 tools/sonos_probe.py <Speaker-IP> transport info
 ```
 
 Das Projekt wird auf vier Ebenen getestet: Unit-Tests, CI-Build, Protokoll-Tests gegen die
@@ -174,7 +175,7 @@ src/
   main.cpp              Einstieg, wählt die Betriebsart
   RemoteApp.cpp         Fernbedienung
   HwTestApp.cpp         Hardware-Test (Schritt 0)
-  VolumeScreen.*        Lautstärke-Bildschirm
+  MainScreen.*          Hauptbildschirm (Lautstärke, Wiedergabezustand)
   TestScreen.*          Hardware-Testbildschirm
   fonts/                Schrift Inter mit Umlauten (erzeugt mit tools/gen_fonts.sh)
 test/
@@ -202,6 +203,8 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 | Build-Fehler `include/secrets.h fehlt` | `cp include/secrets.example.h include/secrets.h` und Werte eintragen. |
 | Anzeige „include/secrets.h ausfüllen“ | Die Datei enthält noch die Platzhalter `MeinWLAN` usw. |
 | Bleibt bei „WLAN verbinden …“ | SSID/Passwort prüfen. Nur 2,4 GHz wird unterstützt. |
+| „Speaker ist Teil einer Gruppe“ | Play/Pause funktioniert nur am Gruppen-Koordinator. Bis Schritt 5 dessen IP in `secrets.h` eintragen, oder den Speaker in der Sonos-App aus der Gruppe nehmen. |
+| „Nichts zum Abspielen“ | Die Warteschlange des Speakers ist leer. Erst in der Sonos-App etwas starten. Ab Schritt 7 geht das mit Favoriten direkt am Gerät. |
 | „Speaker nicht erreichbar“ | Speaker-IP prüfen: `python3 tools/sonos_probe.py <IP> info` muss den Raumnamen zeigen. |
 | Farben vertauscht (Rot ↔ Blau) | Die drei Farbbalken oben auf dem Testbild prüfen und das Ergebnis melden. Die Pins in `board_config.h` werden dann angepasst. |
 | Kein serielles Log | Der USB-C-Port ist der native USB des ESP32-S3. Nach dem Flashen einmal RESET drücken und den Monitor neu verbinden. |

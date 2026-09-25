@@ -13,7 +13,8 @@
 #define WIFI_SSID "MeinWLAN"
 #define WIFI_PASS "geheim"
 
-// Nur für Schritt 1–4: IP-Adresse eines Sonos-Speakers (in der Sonos-App unter
-// Einstellungen > System > Über mein System). Ab Schritt 5 werden die Speaker
-// automatisch gefunden.
+// Nur für Schritt 1–4: IP-Adresse eines Sonos-Speakers (Router-Geräteliste oder Sonos-App;
+// prüfen mit: python3 tools/sonos_probe.py <IP> info). Ist der Speaker Teil einer Gruppe,
+// die IP des Gruppen-Koordinators nehmen – nur dort funktioniert Play/Pause.
+// Ab Schritt 5 werden die Speaker automatisch gefunden.
 #define SONOS_IP "192.168.1.50"

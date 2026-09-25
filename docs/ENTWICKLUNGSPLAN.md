@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0 ✅ abgeschlossen. Schritt 1 umgesetzt, wartet auf den Geräte-Test (T3 + T4).
+> **Stand:** Schritt 0 und 1 ✅ abgeschlossen. Schritt 2 umgesetzt, wartet auf den Geräte-Test (T3 + T4).
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -104,7 +104,7 @@ beim Drücken blinkt ein Kreis.
 
 ---
 
-### Schritt 1 – Lautstärke eines festen Speakers mit dem Ring regeln 🧪
+### Schritt 1 – Lautstärke eines festen Speakers mit dem Ring regeln ✅
 
 **Ziel:** Der erste echte Durchstich: Ring → WLAN → Sonos → Display.
 
@@ -134,7 +134,7 @@ Speakers als Bogen gezeigt. Drehen ändert die Lautstärke hörbar; die Zahl ste
 
 ---
 
-### Schritt 2 – Play/Pause mit Statusanzeige
+### Schritt 2 – Play/Pause mit Statusanzeige 🧪
 
 **Ziel:** Kurz drücken startet/pausiert; das Display zeigt den echten Zustand.
 
