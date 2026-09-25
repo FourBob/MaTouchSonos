@@ -374,3 +374,14 @@ Die Reihenfolge von 6–9 kann nach Wunsch getauscht werden.
   dokumentiert – Firmware-Updates könnten Details ändern. Deshalb landen echte Antworten als Test-Fixtures im Repo.
 - **Firmware-Build nur in CI:** Die Entwicklungsumgebung von Claude kann die PlatformIO-Registry nicht erreichen.
   Unit-Tests laufen lokal, die Firmware wird von GitHub Actions gebaut (T2).
+
+## 7. Backlog
+
+Ideen und Verbesserungen aus den Geräte-Tests, die noch keinem Schritt fest zugeordnet sind.
+Einplanen spätestens in Schritt 9.
+
+| Idee | Anlass | Umsetzung (Skizze) |
+|---|---|---|
+| **Spulen im Ringmenü ausgrauen**, wenn es nicht geht (Radio, TV, Line-In) | Geräte-Test Schritt 7: Dass Spulen bei Radio nicht geht, merkt man erst nach dem Auswählen | `ModeController` bekommt den Kontext schon beim Öffnen/Drehen; nicht verfügbare Einträge grau zeichnen und beim Drehen überspringen (die Logik dafür gab es bis Schritt 6 schon) |
+| Favoriten-Cover als kleine Symbole in der Liste | Schritt 7, optional verschoben | Senderlogo/Cover des markierten Favoriten klein über der Liste oder als abgedunkelter Hintergrund; über den `CoverLoader` laden |
+| Menü/Raumwahl über dem Cover flüssiger zeichnen | Log Schritt 6: `loop_max_ms` bis ~110 ms, wenn Menü oder Raumwahl über dem Cover liegen | Nur geänderte Bereiche neu zeichnen, Ebenen ohne Transparenz, ggf. Cover beim Öffnen einmal in den Hintergrund „einbrennen“ |
