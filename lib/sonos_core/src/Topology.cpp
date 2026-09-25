@@ -150,6 +150,28 @@ int findGroupOf(const std::vector<ZoneGroup>& groups, const std::string& uuid) {
     return -1;
 }
 
+namespace {
+std::string normalized(const std::string& s) {
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    std::string out = s.substr(a, b - a);
+    for (auto& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
+}
+}  // namespace
+
+int findGroupByName(const std::vector<ZoneGroup>& groups, const std::string& name) {
+    const std::string wanted = normalized(name);
+    if (wanted.empty()) return -1;
+    for (size_t i = 0; i < groups.size(); ++i) {
+        for (const auto& m : groups[i].members) {
+            if (normalized(m.name) == wanted) return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 int findGroupByIp(const std::vector<ZoneGroup>& groups, const std::string& ip) {
     for (size_t i = 0; i < groups.size(); ++i) {
         for (const auto& m : groups[i].members) {

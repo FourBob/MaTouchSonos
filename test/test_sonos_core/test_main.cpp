@@ -415,6 +415,19 @@ void test_topology_recorded_installation() {
     TEST_ASSERT_EQUAL_INT(6, topology::findGroupByIp(groups, "192.168.178.118"));
 }
 
+void test_topology_find_group_by_name() {
+    std::vector<ZoneGroup> groups;
+    topology::parseZoneGroupState(fixtures::kZoneGroupStateRecorded, groups);
+    TEST_ASSERT_EQUAL_INT(6, topology::findGroupByName(groups, "Wohnzimmer"));
+    TEST_ASSERT_EQUAL_INT(6, topology::findGroupByName(groups, "  wohnzimmer "));
+    TEST_ASSERT_EQUAL_INT(-1, topology::findGroupByName(groups, "Garage"));
+    TEST_ASSERT_EQUAL_INT(-1, topology::findGroupByName(groups, ""));
+    // Raum in einer Gruppe: gefunden wird die Gruppe (synthetische Anlage: Büro gehört zur Küche)
+    std::vector<ZoneGroup> synthetic;
+    topology::parseZoneGroupState(fixtures::kZoneGroupState, synthetic);
+    TEST_ASSERT_EQUAL_INT(1, topology::findGroupByName(synthetic, "Büro"));
+}
+
 void test_topology_request_matches_recorded() {
     TEST_ASSERT_EQUAL_STRING(fixtures::kGetZoneGroupStateRequest, topology::getZoneGroupState().body.c_str());
 }
@@ -481,6 +494,7 @@ int main(int, char**) {
     RUN_TEST(test_ssdp_request_and_responses);
     RUN_TEST(test_group_volume_requests);
     RUN_TEST(test_topology_recorded_installation);
+    RUN_TEST(test_topology_find_group_by_name);
     RUN_TEST(test_topology_request_matches_recorded);
     RUN_TEST(test_topology_invisible_coordinator_keeps_room);
     return UNITY_END();

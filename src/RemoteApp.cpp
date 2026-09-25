@@ -42,6 +42,9 @@
 #ifndef SONOS_IP
 #define SONOS_IP ""  // optional ab Schritt 5: die Anlage wird per SSDP gefunden
 #endif
+#ifndef SONOS_ROOM
+#define SONOS_ROOM ""  // optional: bevorzugter Raum, mit dem das Gerät immer startet
+#endif
 
 namespace remote_app {
 namespace {
@@ -374,9 +377,11 @@ void setup() {
 
     prefs.begin("matouchsonos", false);
     static String savedRoom = prefs.getString("room", "");
-    Serial.printf("Gemerkter Raum: %s, Start-IP: %s\n", savedRoom.length() ? savedRoom.c_str() : "(keiner)",
+    Serial.printf("Bevorzugter Raum: %s, gemerkter Raum: %s, Start-IP: %s\n",
+                  std::strlen(SONOS_ROOM) ? SONOS_ROOM : "(keiner)",
+                  savedRoom.length() ? savedRoom.c_str() : "(keiner)",
                   std::strlen(SONOS_IP) ? SONOS_IP : "(keine, nur SSDP)");
-    net::SonosLink::begin(WIFI_SSID, WIFI_PASS, savedRoom.c_str(), SONOS_IP);
+    net::SonosLink::begin(WIFI_SSID, WIFI_PASS, SONOS_ROOM, savedRoom.c_str(), SONOS_IP);
 }
 
 void loop() {

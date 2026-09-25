@@ -77,12 +77,15 @@ struct RoomsInfo {
 class SonosLink {
 public:
     /**
-     * @param preferredRoomUuid zuletzt gewählter Raum (Koordinator-UUID) oder "" für automatisch
-     * @param fallbackIp        optional (secrets.h SONOS_IP): Startpunkt für die Suche und
-     *                          Raum für den allerersten Start; "" = nur SSDP
+     * Startraum, in dieser Reihenfolge: `startRoomName` (falls gefunden) → `savedRoomUuid` →
+     * Raum von `fallbackIp` → alphabetisch erster.
+     *
+     * @param startRoomName optional (secrets.h SONOS_ROOM): bevorzugter Raum, gilt bei jedem Start
+     * @param savedRoomUuid zuletzt im Menü gewählter Raum (Koordinator-UUID) oder ""
+     * @param fallbackIp    optional (secrets.h SONOS_IP): Startpunkt für die Suche; "" = nur SSDP
      */
-    static void begin(const char* ssid, const char* password, const char* preferredRoomUuid,
-                      const char* fallbackIp);
+    static void begin(const char* ssid, const char* password, const char* startRoomName,
+                      const char* savedRoomUuid, const char* fallbackIp);
 
     /** Lautstärke setzen (nicht blockierend). Ein noch nicht gesendeter Wert wird ersetzt. */
     static void setVolume(int volume);

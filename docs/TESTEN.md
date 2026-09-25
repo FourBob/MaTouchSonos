@@ -302,6 +302,8 @@ python3 tools/sonos_probe.py <IP> --save probe-seek transport seek 0:01:30
 - [ ] Kurz drücken auf „Wohnzimmer“: „Verbinde mit Wohnzimmer …“, danach Titel/Lautstärke des Wohnzimmers
 - [ ] Langdruck bricht die Raumwahl ab, ohne umzuschalten
 - [ ] **Neustart** (Reset-Taste): Das Gerät startet wieder mit dem zuletzt gewählten Raum
+- [ ] `#define SONOS_ROOM "Wohnzimmer"` eintragen, flashen, im Menü einen anderen Raum wählen, Reset:
+      Das Gerät startet im Wohnzimmer. Log `Bevorzugter Raum: Wohnzimmer`
 
 **Gruppen** (in der Sonos-App zwei Räume gruppieren, z. B. Wohnzimmer + Esszimmer)
 - [ ] Innerhalb von 30 s erscheint der Raum im Drehrad als „Wohnzimmer + 1“ (bzw. mit dem Koordinator vorne)

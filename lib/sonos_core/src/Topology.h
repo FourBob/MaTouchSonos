@@ -47,6 +47,12 @@ std::string ipFromLocation(const std::string& location);
 /** Findet die Gruppe, in der `uuid` Mitglied ist (−1, wenn keine). */
 int findGroupOf(const std::vector<ZoneGroup>& groups, const std::string& uuid);
 
+/**
+ * Findet die Gruppe, in der ein Raum mit diesem Namen steckt (−1, wenn keiner).
+ * Groß-/Kleinschreibung und Leerzeichen am Rand werden ignoriert (ASCII), Umlaute müssen stimmen.
+ */
+int findGroupByName(const std::vector<ZoneGroup>& groups, const std::string& name);
+
 /** Findet die Gruppe, zu der die IP gehört (−1, wenn keine). */
 int findGroupByIp(const std::vector<ZoneGroup>& groups, const std::string& ip);
 

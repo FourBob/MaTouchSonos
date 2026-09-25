@@ -35,6 +35,7 @@ constexpr int kUpnpTransitionNotAvailable = 701;
 
 const char* gSsid = nullptr;
 const char* gPassword = nullptr;
+std::string gStartRoomName;
 std::string gInitialRoomUuid;
 std::string gFallbackIp;
 
@@ -177,6 +178,7 @@ struct Link {
     // Anlage
     std::vector<sonos::ZoneGroup> groups;
     std::string preferredUuid;  // gewählter Raum (Koordinator-UUID zum Zeitpunkt der Wahl)
+    bool startNamePending = true;  // bevorzugter Raum (SONOS_ROOM) noch nicht angewendet
     int roomIndex = -1;
     std::string targetIp;       // Koordinator des aktiven Raums
     bool targetIsGroup = false;
@@ -224,6 +226,17 @@ struct Link {
     /** Aktiven Raum aus Wunsch-UUID und Topologie bestimmen; bei Wechsel neu synchronisieren. */
     void resolveTarget() {
         if (groups.empty()) return;
+        // Beim Start einmalig: bevorzugter Raum aus secrets.h (SONOS_ROOM) hat Vorrang.
+        if (startNamePending) {
+            startNamePending = false;
+            const int byName = sonos::topology::findGroupByName(groups, gStartRoomName);
+            if (byName >= 0) {
+                preferredUuid = groups[byName].coordinatorUuid;
+            } else if (!gStartRoomName.empty()) {
+                Serial.printf("RAUM „%s“ (SONOS_ROOM) nicht gefunden – nehme den zuletzt gewählten\n",
+                              gStartRoomName.c_str());
+            }
+        }
         int idx = preferredUuid.empty() ? -1 : sonos::topology::findGroupOf(groups, preferredUuid);
         if (idx < 0 && !gFallbackIp.empty()) idx = sonos::topology::findGroupByIp(groups, gFallbackIp);
         if (idx < 0) idx = 0;
@@ -513,11 +526,12 @@ void enqueue(const Command& command) {
 
 }  // namespace
 
-void SonosLink::begin(const char* ssid, const char* password, const char* preferredRoomUuid,
-                      const char* fallbackIp) {
+void SonosLink::begin(const char* ssid, const char* password, const char* startRoomName,
+                      const char* savedRoomUuid, const char* fallbackIp) {
     gSsid = ssid;
     gPassword = password;
-    gInitialRoomUuid = preferredRoomUuid ? preferredRoomUuid : "";
+    gStartRoomName = startRoomName ? startRoomName : "";
+    gInitialRoomUuid = savedRoomUuid ? savedRoomUuid : "";
     gFallbackIp = fallbackIp ? fallbackIp : "";
     gVolumeQueue = xQueueCreate(1, sizeof(int));
     gTransportQueue = xQueueCreate(4, sizeof(Command));

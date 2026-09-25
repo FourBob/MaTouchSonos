@@ -133,8 +133,8 @@ Anlage suchen ──▶ bekannte IPs zuerst (aktiver Raum, SONOS_IP, alle zuletz
 GetZoneGroupState (an irgendeinen Speaker) ──▶ Gruppen, Koordinatoren, Namen
    │
    ▼
-Raum auflösen: gewählte UUID (NVS) → Gruppe, in der sie steckt → deren Koordinator-IP
-   │            (sonst die Gruppe von SONOS_IP, sonst die erste alphabetisch)
+Raum auflösen: beim Start SONOS_ROOM (Name) → sonst gewählte UUID (NVS) → Gruppe, in der sie
+   │            steckt → deren Koordinator-IP (sonst die Gruppe von SONOS_IP, sonst die erste alphabetisch)
    ▼
 Abfragen alle 1,5 s an den Koordinator · Topologie alle 30 s neu · nach 3 Fehlschlägen neu suchen
 ```

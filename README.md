@@ -107,8 +107,10 @@ cp include/secrets.example.h include/secrets.h
 `include/secrets.h` steht in `.gitignore` und wird **nie** committet.
 
 Die Sonos-Anlage findet die Fernbedienung selbst (SSDP). Den Raum wählst du am Gerät im Ringmenü.
-Optional kannst du in `SONOS_IP` die IP eines Speakers eintragen. Sie dient als schneller Startpunkt
-für die Suche und legt den Raum beim allerersten Start fest. Welche Speaker es gibt, zeigt
+Optional in `secrets.h`:
+- `SONOS_ROOM "Wohnzimmer"`: **bevorzugter Raum**. Mit ihm startet das Gerät immer. Leer lassen, um mit
+  dem zuletzt im Menü gewählten Raum zu starten.
+- `SONOS_IP`: IP eines Speakers als schneller Startpunkt für die Suche. Welche Speaker es gibt, zeigt
 `python3 tools/sonos_probe.py - discover`.
 
 > Das Board kann nur **2,4-GHz-WLAN**. Bei getrennten 2,4-/5-GHz-Netzen den 2,4-GHz-Namen eintragen.
