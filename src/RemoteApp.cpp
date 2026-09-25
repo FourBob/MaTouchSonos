@@ -376,7 +376,8 @@ void setup() {
     }
 
     prefs.begin("matouchsonos", false);
-    static String savedRoom = prefs.getString("room", "");
+    // isKey() vorab: getString() auf einen fehlenden Schlüssel schreibt sonst eine [E]-Zeile ins Log.
+    static String savedRoom = prefs.isKey("room") ? prefs.getString("room", "") : String("");
     Serial.printf("Bevorzugter Raum: %s, gemerkter Raum: %s, Start-IP: %s\n",
                   std::strlen(SONOS_ROOM) ? SONOS_ROOM : "(keiner)",
                   savedRoom.length() ? savedRoom.c_str() : "(keiner)",

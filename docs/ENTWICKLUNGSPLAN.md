@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–4 ✅ abgeschlossen. Schritt 5 umgesetzt, wartet auf den Geräte-Test.
+> **Stand:** Schritt 0–5 ✅ abgeschlossen. Als Nächstes: Schritt 6 (Albumcover).
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -218,7 +218,7 @@ die Zielzeit steht in der Mitte; Drücken springt dorthin, Langdruck bricht ab.
 
 ---
 
-### Schritt 5 – Räume finden und wählen 🧪
+### Schritt 5 – Räume finden und wählen ✅
 
 **Ziel:** Keine feste IP mehr. Alle Räume werden gefunden und sind im Ringmenü wählbar.
 

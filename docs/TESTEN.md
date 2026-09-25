@@ -283,7 +283,7 @@ python3 tools/sonos_probe.py <IP> --save probe-seek transport seek 0:01:30
 
 ---
 
-## Checkliste Schritt 5 – Räume finden und wählen
+## Checkliste Schritt 5 – Räume finden und wählen ✅
 
 **Vorbereitung:** Die Speaker-IP in `include/secrets.h` ist jetzt optional. Für den ersten Test
 **leer lassen** (`#define SONOS_IP ""`), damit die automatische Suche geprüft wird.

@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 5 von 9: Now Playing, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen und Raumwahl. Die Anlage wird automatisch gefunden.
+> **Projektstand:** Schritt 5 von 9 abgeschlossen: Now Playing, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen und Raumwahl. Die Anlage wird automatisch gefunden. Als Nächstes: Albumcover.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -38,7 +38,7 @@ Außen läuft der Fortschrittsbogen.
 | 2 | Play/Pause mit Statusanzeige | ✅ getestet |
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ✅ getestet |
 | 4 | Ringmenü und Scrubbing | ✅ getestet |
-| 5 | Räume automatisch finden und wählen | 🧪 wartet auf Geräte-Test |
+| 5 | Räume automatisch finden und wählen | ✅ getestet |
 | 6 | Albumcover | ⏳ |
 | 7 | Sonos-Favoriten und Radio starten | ⏳ |
 | 8 | Gruppen verwalten, Gruppenlautstärke | ⏳ |
