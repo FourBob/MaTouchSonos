@@ -257,6 +257,26 @@ void test_nowplaying_tv_linein_and_empty() {
     TEST_ASSERT_TRUE(np.kind == SourceKind::None);
 }
 
+void test_nowplaying_tv_from_media_when_track_uri_empty() {
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionEmpty, pos));
+    MediaInfo media;
+    media.currentUri = "x-sonos-htastream:RINCON_000000000000001400:spdif";
+    NowPlaying np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::TV);
+    TEST_ASSERT_EQUAL_STRING("TV", np.title.c_str());
+
+    media.currentUri = "x-rincon-stream:RINCON_000000000000001400";
+    np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::LineIn);
+
+    // Eine gefüllte TrackURI hat Vorrang vor einer veralteten CurrentURI.
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionTv, pos));
+    media.currentUri = "x-rincon-queue:RINCON_000000000000001400#0";
+    np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::TV);
+}
+
 void test_nowplaying_rejects_unexpected_response() {
     PositionInfo pos;
     TEST_ASSERT_FALSE(parsePositionInfo(fixtures::kFault402, pos));
@@ -554,6 +574,7 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_radio_without_media_hides_uri_title);
     RUN_TEST(test_nowplaying_radio_connecting_placeholder);
     RUN_TEST(test_nowplaying_tv_linein_and_empty);
+    RUN_TEST(test_nowplaying_tv_from_media_when_track_uri_empty);
     RUN_TEST(test_nowplaying_rejects_unexpected_response);
     RUN_TEST(test_avtransport_next_previous_seek_requests);
     RUN_TEST(test_nowplaying_recorded_radio_dlf);

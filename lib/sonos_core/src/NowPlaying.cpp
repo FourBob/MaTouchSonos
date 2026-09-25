@@ -126,12 +126,18 @@ NowPlaying buildNowPlaying(const PositionInfo& pos, const MediaInfo* media) {
     NowPlaying np;
     const TrackMeta meta = parseDidl(pos.trackMetaData);
 
-    if (startsWith(pos.trackUri, "x-sonos-htastream:")) {
+    // TV/Line-In: Manche Geräte lassen TrackURI beim TV-Eingang leer – dann verrät es nur
+    // CurrentURI aus GetMediaInfo.
+    const std::string mediaUri = media ? media->currentUri : std::string();
+    const auto isSource = [&](const char* prefix) {
+        return startsWith(pos.trackUri, prefix) || (pos.trackUri.empty() && startsWith(mediaUri, prefix));
+    };
+    if (isSource("x-sonos-htastream:")) {
         np.kind = SourceKind::TV;
         np.title = "TV";
         return np;
     }
-    if (startsWith(pos.trackUri, "x-rincon-stream:")) {
+    if (isSource("x-rincon-stream:")) {
         np.kind = SourceKind::LineIn;
         np.title = "Line-In";
         return np;

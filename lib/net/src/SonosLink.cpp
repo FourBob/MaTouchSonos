@@ -332,8 +332,9 @@ void poll(Link& link) {
         return;
     }
 
-    // Quelle gewechselt: GetMediaInfo liefert u. a. den Sendernamen bei Radio.
-    if (pos.trackUri != link.lastTrackUri || !link.hasMedia) {
+    // Quelle gewechselt: GetMediaInfo liefert u. a. den Sendernamen bei Radio. Bei leerer
+    // TrackURI jedes Mal – sie bleibt z. B. beim Wechsel auf den TV-Eingang mancher Geräte leer.
+    if (pos.trackUri != link.lastTrackUri || pos.trackUri.empty() || !link.hasMedia) {
         r = call(link.targetIp, sonos::avtransport::getMediaInfo(), body);
         link.hasMedia = r.ok && sonos::parseMediaInfo(body, link.media);
         link.lastTrackUri = pos.trackUri;

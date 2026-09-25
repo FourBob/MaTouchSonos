@@ -70,7 +70,7 @@ TrackMeta parseDidl(const std::string& didl);
  * @param media darf nullptr sein; wird für den Sendernamen bei Radio verwendet.
  *
  * Regeln:
- *  - TV (x-sonos-htastream:) → "TV", Line-In (x-rincon-stream:) → "Line-In"
+ *  - TV (x-sonos-htastream:) → "TV", Line-In (x-rincon-stream:) → "Line-In" (bei leerer TrackURI aus CurrentURI)
  *  - Radio (Länge 0 bzw. Stream-URI): Titel = r:streamContent (falls sinnvoll), sonst
  *    Sendername; Untertitel = Sendername; Cover = Senderlogo aus GetMediaInfo.
  *    Sonos-Platzhalter wie „ZPSTR_CONNECTING“ werden zu „Verbinde …“, Stream-Adressen
