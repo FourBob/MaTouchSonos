@@ -6,6 +6,7 @@
 
 #include "ModeController.h"
 #include "NowPlaying.h"
+#include "symbols.h"
 
 namespace {
 
@@ -42,7 +43,7 @@ struct MenuEntry {
 };
 // Reihenfolge wie app::ModeController::MenuItem, im Uhrzeigersinn ab oben
 const MenuEntry kMenu[app::ModeController::kMenuItemCount] = {
-    {LV_SYMBOL_LOOP, "Spulen"},
+    {MTS_SYMBOL_BACKWARD MTS_SYMBOL_FORWARD, "Spulen"},  // ⏪⏩ – LV_SYMBOL_LOOP sähe aus wie „Wiederholen“
     {LV_SYMBOL_HOME, "Räume"},
     {LV_SYMBOL_AUDIO, "Favoriten"},
     {LV_SYMBOL_CLOSE, "Schließen"},
