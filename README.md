@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 3 von 9 abgeschlossen: Now Playing mit Titel und Fortschritt, Lautstärke, Play/Pause und Titelwechsel per Wischen. Als Nächstes: Ringmenü und Spulen.
+> **Projektstand:** Schritt 4 von 9: Now Playing, Lautstärke, Play/Pause, Titelwechsel per Wischen, Ringmenü und Spulen.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -21,9 +21,9 @@ Die Bedienung ist auf die runde Form und den Drehring ausgelegt:
 |---|---|
 | **Ring drehen** | Lautstärke (Bogen am Rand zeigt den Wert) |
 | **Kurz drücken** | Play / Pause |
-| **Lang drücken** | Ringmenü: **Raum**, **Favoriten**, **Scrub** – der Ring blättert, Drücken wählt |
+| **Lang drücken** | Ringmenü: **Spulen**, **Räume** (ab Schritt 5), **Favoriten** (ab Schritt 7), **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
 | **Nach rechts / links wischen** | Nächster / vorheriger Titel |
-| **Scrub-Modus** | Der Ring verschiebt die Position auf dem Fortschrittsbogen, Drücken springt dorthin |
+| **Spulen** | Der Ring verschiebt die Zielposition auf dem Fortschrittsring (1 % pro Klick, mindestens 5 s), Drücken springt dorthin, Langdruck bricht ab |
 
 Auf dem **Now-Playing-Bildschirm** stehen Titel und Interpret vor dem runden Albumcover.
 Außen läuft der Fortschrittsbogen.
@@ -36,7 +36,7 @@ Außen läuft der Fortschrittsbogen.
 | 1 | Lautstärke eines Speakers mit dem Ring regeln | ✅ getestet |
 | 2 | Play/Pause mit Statusanzeige | ✅ getestet |
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ✅ getestet |
-| 4 | Ringmenü und Scrubbing | ⏳ |
+| 4 | Ringmenü und Scrubbing | 🧪 wartet auf Geräte-Test |
 | 5 | Räume automatisch finden und wählen | ⏳ |
 | 6 | Albumcover | ⏳ |
 | 7 | Sonos-Favoriten und Radio starten | ⏳ |

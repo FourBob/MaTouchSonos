@@ -14,6 +14,7 @@ Beispiele:
   python3 tools/sonos_probe.py 192.168.1.50 volume set 25
   python3 tools/sonos_probe.py 192.168.1.50 transport info
   python3 tools/sonos_probe.py 192.168.1.50 transport pause
+  python3 tools/sonos_probe.py 192.168.1.50 transport seek 0:01:30
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out transport info
   python3 tools/sonos_probe.py 192.168.1.50 nowplaying          # was läuft gerade?
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out nowplaying
@@ -135,6 +136,7 @@ def cmd_transport(ip: str, args) -> int:
         "stop": ("Stop", [("InstanceID", "0")]),
         "next": ("Next", [("InstanceID", "0")]),
         "previous": ("Previous", [("InstanceID", "0")]),
+        "seek": ("Seek", [("InstanceID", "0"), ("Unit", "REL_TIME"), ("Target", args.position)]),
     }
     action, soap_args = actions[args.op]
     req, status, resp, ms = soap(ip, "AVTransport", action, soap_args)
@@ -190,8 +192,9 @@ def main() -> int:
     vset = vol_sub.add_parser("set")
     vset.add_argument("value", type=int, help="0..100")
 
-    tr = sub.add_parser("transport", help="Wiedergabe: Zustand lesen, Play, Pause, Stop")
-    tr.add_argument("op", choices=["info", "play", "pause", "stop", "next", "previous"])
+    tr = sub.add_parser("transport", help="Wiedergabe: Zustand lesen, Play, Pause, Stop, Next, Previous, Seek")
+    tr.add_argument("op", choices=["info", "play", "pause", "stop", "next", "previous", "seek"])
+    tr.add_argument("position", nargs="?", default="0:00:30", help="nur für seek: Zielposition H:MM:SS")
 
     sub.add_parser("nowplaying", help="Was läuft gerade? (GetPositionInfo + GetMediaInfo)")
 

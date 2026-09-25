@@ -1,8 +1,13 @@
-// Fernbedienung – Stand Schritt 3: Now Playing, Lautstärke, Play/Pause, Titel wechseln.
+// Fernbedienung – Stand Schritt 4: Now Playing, Lautstärke, Play/Pause, Titel wechseln,
+// Ringmenü und Spulen.
 //
 // Ablauf pro Schleifendurchlauf (Kern 1):
-//   Drehring   -> VolumeController (optimistisch, Drossel)  -> SonosLink.setVolume
-//   Taste kurz -> PlaybackController (optimistisch)         -> SonosLink.transport(Play/Pause)
+//   Drehring/Taste -> ModeController (Normal / Menü / Spulen) entscheidet, was sie bedeuten:
+//     Normal: Drehring -> VolumeController (optimistisch, Drossel) -> SonosLink.setVolume
+//             Taste kurz -> PlaybackController (optimistisch)      -> SonosLink.transport(Play/Pause)
+//             Taste lang -> Ringmenü
+//     Menü:   Drehring wählt, kurz öffnet, lang schließt
+//     Spulen: Drehring verschiebt die Zielposition, kurz -> SonosLink.seek, lang bricht ab
 //   Wischen    -> rechts: nächster, links: vorheriger Titel              -> SonosLink.transport(Next/Previous)
 //   SonosLink-Ereignisse + Now-Playing-Momentaufnahme        -> Controller -> Anzeige
 // Das Netzwerk läuft in der SonosLink-Task auf Kern 0 und blockiert die UI nie.
@@ -20,6 +25,7 @@
 #include "Diagnostics.h"
 #include "Display.h"
 #include "Input.h"
+#include "ModeController.h"
 #include "NowPlaying.h"
 #include "NowPlayingScreen.h"
 #include "PlaybackController.h"
@@ -42,6 +48,7 @@ app::ButtonDetector button;
 app::VolumeController volume;
 app::PlaybackController playback;
 app::ProgressTracker progress;
+app::ModeController modes;
 NowPlayingScreen screen;
 int32_t rawSinceLastDetent = 0;
 
@@ -192,7 +199,7 @@ void handleNetEvent(const net::Event& e, uint32_t now) {
     }
 }
 
-void onShortPress(uint32_t now) {
+void togglePlayPause(uint32_t now) {
     app::TransportCommand cmd;
     if (!playback.toggle(now, cmd)) {
         Serial.println(F("BTN short – Zustand noch unbekannt, ignoriert"));
@@ -211,7 +218,7 @@ void onSwipe(NowPlayingScreen::Swipe dir) {
     const bool next = dir == NowPlayingScreen::Swipe::Right;
     Serial.printf("SWIPE %s\n", next ? "rechts -> Next" : "links -> Previous");
 
-    if (!hasNowPlaying) return;
+    if (!hasNowPlaying || modes.mode() != app::ModeController::Mode::Normal) return;
     if (currentSource() != sonos::SourceKind::Track) {
         showMessage("Bei dieser Quelle nicht möglich", NowPlayingScreen::Status::Info, kHintMs, now);
         return;
@@ -221,10 +228,84 @@ void onSwipe(NowPlayingScreen::Swipe dir) {
                 NowPlayingScreen::Status::Info, kHintMs, now);
 }
 
+/** Was der aktuelle Titel für Menü und Spulen zulässt. */
+app::ModeController::Context modeContext(uint32_t now) {
+    app::ModeController::Context c;
+    c.canScrub = hasNowPlaying && progress.known();
+    c.positionSec = progress.positionSec(now);
+    c.durationSec = progress.durationSec();
+    return c;
+}
+
+const char* menuItemName(int item) {
+    switch (static_cast<app::ModeController::MenuItem>(item)) {
+        case app::ModeController::MenuItem::Scrub: return "Spulen";
+        case app::ModeController::MenuItem::Rooms: return "Räume";
+        case app::ModeController::MenuItem::Favorites: return "Favoriten";
+        case app::ModeController::MenuItem::Close: return "Schließen";
+    }
+    return "?";
+}
+
+/** Führt aus, was der ModeController entschieden hat. */
+void apply(const app::ModeController::Action& a, uint32_t now) {
+    using T = app::ModeController::Action::Type;
+    switch (a.type) {
+        case T::None:
+            break;
+        case T::Volume:
+            if (volume.onUserDetents(a.value, now)) screen.setVolume(volume.value(), true);
+            if (volume.hasValue()) screen.showVolumeOverlay(now);
+            break;
+        case T::TogglePlayPause:
+            togglePlayPause(now);
+            break;
+        case T::MenuOpened:
+        case T::MenuMoved:
+            screen.showMenu(a.value);
+            Serial.printf("MENU %s\n", menuItemName(a.value));
+            break;
+        case T::MenuClosed:
+            screen.hideMenu();
+            Serial.println(F("MENU geschlossen"));
+            break;
+        case T::ScrubStarted:
+            screen.hideMenu();
+            screen.showScrub(a.value, progress.durationSec());
+            Serial.printf("SCRUB Start bei %s\n", sonos::time::format(a.value).c_str());
+            break;
+        case T::ScrubMoved:
+            screen.showScrub(a.value, progress.durationSec());
+            break;
+        case T::ScrubCommitted:
+            screen.hideScrub();
+            progress.jumpTo(a.value, now);  // sofort anzeigen, der Speaker bestätigt beim nächsten Abfragen
+            lastShownSecond = -2;
+            net::SonosLink::seek(a.value);
+            Serial.printf("SCRUB -> Seek %s\n", sonos::time::format(a.value).c_str());
+            break;
+        case T::ScrubCancelled:
+            screen.hideScrub();
+            lastShownSecond = -2;
+            Serial.println(F("SCRUB abgebrochen"));
+            break;
+        case T::NotAvailable: {
+            screen.hideMenu();
+            const auto item = static_cast<app::ModeController::MenuItem>(a.value);
+            const char* text = item == app::ModeController::MenuItem::Scrub
+                                   ? "Spulen geht nur bei Titeln mit bekannter Länge"
+                                   : (item == app::ModeController::MenuItem::Rooms ? "Räume kommen in Schritt 5"
+                                                                                   : "Favoriten kommen in Schritt 7");
+            showMessage(text, NowPlayingScreen::Status::Info, kMessageMs, now);
+            break;
+        }
+    }
+}
+
 }  // namespace
 
 void setup() {
-    diag::logBootInfo("Fernbedienung (Schritt 3)");
+    diag::logBootInfo("Fernbedienung (Schritt 4)");
 
     if (!hal::Display::begin()) {
         Serial.println(F("FEHLER: Display-Initialisierung fehlgeschlagen"));
@@ -245,27 +326,30 @@ void setup() {
 void loop() {
     const uint32_t now = millis();
 
-    // Drehring -> Lautstärke
+    // Drehring – Bedeutung je nach Modus (Lautstärke, Menüauswahl, Zielposition)
     rawSinceLastDetent += hal::Input::takeRawSteps();
     const int32_t d = hal::Input::takeDetents();
     if (d != 0) {
-        if (volume.onUserDetents(d, now)) screen.setVolume(volume.value(), true);
-        if (volume.hasValue()) screen.showVolumeOverlay(now);
-        // raw = Hardware-Zählerschritte (4 pro Rastung) – zeigt, ob Klicks verloren gehen.
-        Serial.printf("ENC %+ld (raw %+ld) -> Lautstärke %d%s\n", static_cast<long>(d),
-                      static_cast<long>(rawSinceLastDetent), volume.value(),
-                      volume.hasValue() ? "" : " (Speaker noch unbekannt, ignoriert)");
+        const auto mode = modes.mode();
+        apply(modes.onDetents(d, now, modeContext(now)), now);
+        if (mode == app::ModeController::Mode::Normal) {
+            // raw = Hardware-Zählerschritte (4 pro Rastung) – zeigt, ob Klicks verloren gehen.
+            Serial.printf("ENC %+ld (raw %+ld) -> Lautstärke %d%s\n", static_cast<long>(d),
+                          static_cast<long>(rawSinceLastDetent), volume.value(),
+                          volume.hasValue() ? "" : " (Speaker noch unbekannt, ignoriert)");
+        }
         rawSinceLastDetent = 0;
     }
     int toSend;
     if (volume.takeValueToSend(now, toSend)) net::SonosLink::setVolume(toSend);
 
-    // Taste
+    // Taste – ebenfalls je nach Modus
     switch (button.update(hal::Input::buttonRaw(), now)) {
-        case app::ButtonEvent::Short: onShortPress(now); break;
-        case app::ButtonEvent::Long: Serial.println(F("BTN long (Menü folgt in Schritt 4)")); break;
+        case app::ButtonEvent::Short: apply(modes.onShortPress(now, modeContext(now)), now); break;
+        case app::ButtonEvent::Long: apply(modes.onLongPress(now), now); break;
         case app::ButtonEvent::None: break;
     }
+    apply(modes.tick(now), now);  // Menü/Spulen nach 10 s ohne Eingabe schließen
 
     // Netzwerk
     net::Event e;

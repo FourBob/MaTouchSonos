@@ -4,6 +4,7 @@
 
 #include <cstring>
 
+#include "ModeController.h"
 #include "NowPlaying.h"
 
 namespace {
@@ -33,6 +34,28 @@ lv_obj_t* overlay;
 lv_obj_t* volumeArc;
 lv_obj_t* volumeLabel;
 uint32_t overlayUntil = 0;
+
+// Ringmenü
+struct MenuEntry {
+    const char* symbol;
+    const char* name;
+};
+// Reihenfolge wie app::ModeController::MenuItem, im Uhrzeigersinn ab oben
+const MenuEntry kMenu[app::ModeController::kMenuItemCount] = {
+    {LV_SYMBOL_LOOP, "Spulen"},
+    {LV_SYMBOL_HOME, "Räume"},
+    {LV_SYMBOL_AUDIO, "Favoriten"},
+    {LV_SYMBOL_CLOSE, "Schließen"},
+};
+lv_obj_t* menuLayer;
+lv_obj_t* menuBubbles[app::ModeController::kMenuItemCount];
+lv_obj_t* menuName;
+lv_obj_t* menuHint;
+
+// Spulen
+lv_obj_t* scrubTimeLabel;
+lv_obj_t* scrubHintLabel;
+bool scrubbing = false;
 
 bool volumeKnown = false;
 app::PlayState playState = app::PlayState::Unknown;
@@ -134,6 +157,44 @@ void NowPlayingScreen::create(SwipeHandler onSwipe) {
     lv_obj_align(volumeLabel, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(overlay, LV_OBJ_FLAG_HIDDEN);
 
+    // --- Spulen: große Zielzeit + Hinweis (auf dem Now-Playing-Bildschirm) --------
+    scrubTimeLabel = makeLabel(scr, &font_inter_48, kText, 300, 105, false);
+    scrubHintLabel = makeLabel(scr, &font_inter_14, kTextDim, 300, 150, false);
+    lv_label_set_text(scrubHintLabel, "Drücken: springen · Lang: abbrechen");
+    lv_obj_add_flag(scrubTimeLabel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(scrubHintLabel, LV_OBJ_FLAG_HIDDEN);
+
+    // --- Ringmenü (deckend, über allem) --------------------------------------------
+    menuLayer = lv_obj_create(scr);
+    lv_obj_remove_style_all(menuLayer);
+    lv_obj_set_size(menuLayer, 480, 480);
+    lv_obj_center(menuLayer);
+    lv_obj_set_style_radius(menuLayer, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(menuLayer, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(menuLayer, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(menuLayer, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(menuLayer, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Einträge auf einem Kreis mit Radius 150 px: oben, rechts, unten, links
+    const int16_t offsets[app::ModeController::kMenuItemCount][2] = {{0, -150}, {150, 0}, {0, 150}, {-150, 0}};
+    for (int i = 0; i < app::ModeController::kMenuItemCount; ++i) {
+        lv_obj_t* b = lv_obj_create(menuLayer);
+        lv_obj_remove_style_all(b);
+        lv_obj_set_size(b, 96, 96);
+        lv_obj_align(b, LV_ALIGN_CENTER, offsets[i][0], offsets[i][1]);
+        lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t* sym = lv_label_create(b);
+        lv_obj_set_style_text_font(sym, &font_inter_28, 0);
+        lv_label_set_text(sym, kMenu[i].symbol);
+        lv_obj_center(sym);
+        menuBubbles[i] = b;
+    }
+    menuName = makeLabel(menuLayer, &font_inter_28, kText, 200, -10, false);
+    menuHint = makeLabel(menuLayer, &font_inter_14, kTextDim, 200, 25, false);
+    lv_obj_add_flag(menuLayer, LV_OBJ_FLAG_HIDDEN);
+
     setTrack("", "", "");
     setProgress(false, 0, -1, -1);
     setVolume(0, false);
@@ -147,6 +208,7 @@ void NowPlayingScreen::setTrack(const char* title, const char* subtitle, const c
 }
 
 void NowPlayingScreen::setProgress(bool showProgress, int permille, int positionSec, int durationSec) {
+    if (scrubbing) return;  // beim Spulen zeigt der Ring die Zielposition
     if (!showProgress) {
         lv_arc_set_value(progressArc, 0);
         setTextIfChanged(timeLabel, "");
@@ -191,6 +253,56 @@ void NowPlayingScreen::setStatus(const char* text, Status kind) {
     setTextIfChanged(statusLabel, text);
     const uint32_t color = kind == Status::Error ? kError : (kind == Status::Ok ? kAccent : kTextDim);
     lv_obj_set_style_text_color(statusLabel, lv_color_hex(color), 0);
+}
+
+void NowPlayingScreen::showMenu(int selection) {
+    for (int i = 0; i < app::ModeController::kMenuItemCount; ++i) {
+        const bool enabled = app::ModeController::isEnabled(static_cast<app::ModeController::MenuItem>(i));
+        const bool selected = i == selection;
+        lv_obj_set_style_bg_color(menuBubbles[i], lv_color_hex(selected ? kAccent : kTrackBg), 0);
+        lv_obj_t* sym = lv_obj_get_child(menuBubbles[i], 0);
+        const uint32_t symColor = selected ? 0x000000 : (enabled ? kText : kInactive);
+        lv_obj_set_style_text_color(sym, lv_color_hex(symColor), 0);
+    }
+    setTextIfChanged(menuName, kMenu[selection].name);
+    setTextIfChanged(menuHint, "Drücken: öffnen");
+    lv_obj_add_flag(overlay, LV_OBJ_FLAG_HIDDEN);  // Lautstärke-Einblendung weg
+    overlayUntil = 0;
+    lv_obj_clear_flag(menuLayer, LV_OBJ_FLAG_HIDDEN);
+}
+
+void NowPlayingScreen::hideMenu() { lv_obj_add_flag(menuLayer, LV_OBJ_FLAG_HIDDEN); }
+
+void NowPlayingScreen::showScrub(int targetSec, int durationSec) {
+    if (!scrubbing) {
+        scrubbing = true;
+        // Ring dicker, mit Punkt an der Zielposition
+        lv_obj_set_style_arc_width(progressArc, 14, LV_PART_MAIN);
+        lv_obj_set_style_arc_width(progressArc, 14, LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(progressArc, lv_color_hex(kAccent), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(progressArc, lv_color_white(), LV_PART_KNOB);
+        lv_obj_set_style_bg_opa(progressArc, LV_OPA_COVER, LV_PART_KNOB);
+        lv_obj_set_style_radius(progressArc, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(progressArc, 5, LV_PART_KNOB);
+        lv_obj_add_flag(timeLabel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(scrubTimeLabel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(scrubHintLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+    const int permille = durationSec > 0 ? static_cast<int>(static_cast<int64_t>(targetSec) * 1000 / durationSec) : 0;
+    lv_arc_set_value(progressArc, static_cast<int16_t>(permille));
+    setTextIfChanged(scrubTimeLabel, sonos::time::format(targetSec).c_str());
+}
+
+void NowPlayingScreen::hideScrub() {
+    if (!scrubbing) return;
+    scrubbing = false;
+    lv_obj_set_style_arc_width(progressArc, 8, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(progressArc, 8, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(progressArc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_add_flag(scrubTimeLabel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(scrubHintLabel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(timeLabel, LV_OBJ_FLAG_HIDDEN);
+    applyPlayStateColors();
 }
 
 void NowPlayingScreen::tick(uint32_t nowMs) {

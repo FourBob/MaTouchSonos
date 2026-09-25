@@ -247,3 +247,36 @@ python3 tools/sonos_probe.py <IP> --save probe-tv nowplaying          # TV/Line-
 - [ ] 15 Minuten laufen lassen: Im Log dürfen vereinzelt `SONOS … FEHLER (1/3)` oder `Aussetzer` stehen,
       aber auf dem Display erscheint **keine** Fehlermeldung, solange der Speaker erreichbar ist
 - [ ] `heap_frei` bleibt stabil, kein Neustart
+
+---
+
+## Checkliste Schritt 4 – Ringmenü und Spulen
+
+**T3** (optional, ein Titel mit bekannter Länge muss laufen):
+```bash
+python3 tools/sonos_probe.py <IP> --save probe-seek transport seek 0:01:30
+```
+- [ ] Die Wiedergabe springt auf 1:30
+
+**Ringmenü** (`pio run -e matouch -t upload`)
+- [ ] Lang drücken: Das Menü erscheint mit vier Symbolen im Kreis. „Spulen“ oben ist grün, der Name steht in der Mitte.
+      Log `MENU Spulen`
+- [ ] Ring drehen: Die Auswahl springt zwischen „Spulen“ und „Schließen“. „Räume“ und „Favoriten“ sind grau und
+      werden übersprungen
+- [ ] Während das Menü offen ist, ändert der Ring **nicht** die Lautstärke
+- [ ] „Schließen“ wählen und kurz drücken: Das Menü schließt sich
+- [ ] Menü öffnen und lang drücken: Das Menü schließt sich
+- [ ] Menü öffnen und 10 s nichts tun: Das Menü schließt sich von selbst
+
+**Spulen** (bei einem Titel mit bekannter Länge, z. B. Spotify)
+- [ ] Menü → „Spulen“ → kurz drücken: Der Ring wird dicker, ein weißer Punkt steht an der aktuellen Position,
+      die Zeit steht groß in der Mitte
+- [ ] Ring drehen: Punkt und Zeit wandern (1 % pro Klick, mindestens 5 s, schnell gedreht dreifach)
+- [ ] Kurz drücken: Die Musik springt an die gewählte Stelle (±2 s), Log `SCRUB -> Seek …` und `SONOS Seek … ok`
+- [ ] Erneut spulen und lang drücken: Abbruch, die Musik läuft unverändert weiter
+- [ ] Während des Spulens ändert der Ring **nicht** die Lautstärke
+- [ ] Bei **Radio**: Menü → „Spulen“ → Hinweis „Spulen geht nur bei Titeln mit bekannter Länge“
+
+**Allgemein**
+- [ ] Im normalen Modus funktionieren Lautstärke, Play/Pause und Wischen wie bisher
+- [ ] Ist die Bedienung ohne Anleitung verständlich? Dein Eindruck als Notiz

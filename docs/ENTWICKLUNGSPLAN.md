@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–3 ✅ abgeschlossen. Als Nächstes: Schritt 4 (Ringmenü + Scrubbing).
+> **Stand:** Schritt 0–3 ✅ abgeschlossen. Schritt 4 umgesetzt, wartet auf den Geräte-Test.
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -191,7 +191,7 @@ Der Lautstärkebogen erscheint nur noch beim Drehen und blendet nach 2 s aus.
 
 ---
 
-### Schritt 4 – Ringmenü (Grundgerüst) + Scrubbing
+### Schritt 4 – Ringmenü (Grundgerüst) + Scrubbing 🧪
 
 **Ziel:** Langdruck öffnet das Ringmenü; erster Eintrag ist **Scrub**.
 

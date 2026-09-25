@@ -30,7 +30,12 @@ const char* gPassword = nullptr;
 const char* gSpeakerIp = nullptr;
 
 QueueHandle_t gVolumeQueue = nullptr;     // int, Länge 1 (xQueueOverwrite)
-QueueHandle_t gTransportQueue = nullptr;  // Transport, Länge 4
+QueueHandle_t gTransportQueue = nullptr;  // Command, Länge 4
+
+struct Command {
+    Transport type;
+    int value;  // Seek: Zielposition in Sekunden
+};
 QueueHandle_t gEventQueue = nullptr;      // Event, Länge 16
 
 SemaphoreHandle_t gNowPlayingMutex = nullptr;
@@ -187,12 +192,13 @@ void sendVolume(Link& link, int volume) {
     }
 }
 
-sonos::SoapRequest requestFor(Transport command) {
-    switch (command) {
+sonos::SoapRequest requestFor(const Command& command) {
+    switch (command.type) {
         case Transport::Play: return sonos::avtransport::play();
         case Transport::Pause: return sonos::avtransport::pause();
         case Transport::Next: return sonos::avtransport::next();
         case Transport::Previous: return sonos::avtransport::previous();
+        case Transport::Seek: return sonos::avtransport::seek(command.value);
     }
     return sonos::avtransport::play();
 }
@@ -203,24 +209,29 @@ const char* nameOf(Transport command) {
         case Transport::Pause: return "Pause";
         case Transport::Next: return "Next";
         case Transport::Previous: return "Previous";
+        case Transport::Seek: return "Seek";
     }
     return "?";
 }
 
-void sendTransport(Link& link, Transport command) {
-    const char* name = nameOf(command);
+void sendTransport(Link& link, const Command& command) {
+    const char* name = nameOf(command.type);
     std::string body;
     sonos::SoapResult r = callWithRetry(requestFor(command), body);
 
     // Manche Quellen (z. B. Radio-Streams) können nicht pausieren – dann stoppen.
-    if (!r.ok && command == Transport::Pause && r.upnpErrorCode == kUpnpTransitionNotAvailable) {
+    if (!r.ok && command.type == Transport::Pause && r.upnpErrorCode == kUpnpTransitionNotAvailable) {
         Serial.println(F("SONOS Pause nicht möglich – sende Stop"));
         name = "Stop";
         r = callWithRetry(sonos::avtransport::stop(), body);
     }
 
     if (r.ok) {
-        Serial.printf("SONOS %s ok\n", name);
+        if (command.type == Transport::Seek) {
+            Serial.printf("SONOS Seek %s ok\n", sonos::time::toUpnp(command.value).c_str());
+        } else {
+            Serial.printf("SONOS %s ok\n", name);
+        }
         link.nextPollAt = millis() + kPollAfterCommandMs;
     } else if (r.httpStatus <= 0) {
         post(Event::Type::TransportError, 0, r.error.c_str());
@@ -278,7 +289,7 @@ void task(void*) {
         if (xQueueReceive(gVolumeQueue, &volume, 0) == pdTRUE && link.synced) {
             sendVolume(link, volume);
         }
-        Transport command;
+        Command command;
         if (xQueueReceive(gTransportQueue, &command, pdMS_TO_TICKS(20)) == pdTRUE && link.synced) {
             sendTransport(link, command);
         }
@@ -297,7 +308,7 @@ void SonosLink::begin(const char* ssid, const char* password, const char* speake
     gPassword = password;
     gSpeakerIp = speakerIp;
     gVolumeQueue = xQueueCreate(1, sizeof(int));
-    gTransportQueue = xQueueCreate(4, sizeof(Transport));
+    gTransportQueue = xQueueCreate(4, sizeof(Command));
     gEventQueue = xQueueCreate(16, sizeof(Event));
     gNowPlayingMutex = xSemaphoreCreateMutex();
     // Kern 0 (dort läuft auch der WLAN-Stack), UI bleibt auf Kern 1.
@@ -309,11 +320,17 @@ void SonosLink::setVolume(int volume) {
     if (gVolumeQueue) xQueueOverwrite(gVolumeQueue, &volume);
 }
 
-void SonosLink::transport(Transport command) {
+namespace {
+void enqueue(const Command& command) {
     if (gTransportQueue && xQueueSend(gTransportQueue, &command, 0) != pdTRUE) {
         log_w("Transport-Queue voll, Befehl verworfen");
     }
 }
+}  // namespace
+
+void SonosLink::transport(Transport command) { enqueue(Command{command, 0}); }
+
+void SonosLink::seek(int positionSec) { enqueue(Command{Transport::Seek, positionSec}); }
 
 bool SonosLink::pollEvent(Event& out) {
     return gEventQueue && xQueueReceive(gEventQueue, &out, 0) == pdTRUE;

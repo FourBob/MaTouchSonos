@@ -28,6 +28,7 @@
 │  VolumeController             │  AVTransport             │
 │  PlaybackController           │  NowPlaying (DIDL-Lite)  │
 │  ProgressTracker              │  (Topologie ab Schritt 5)│
+│  ModeController (Menü/Spulen) │                          │
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
 │ lib/net/        WLAN, HTTP, SSDP (ab Schritt 1/5)         │
@@ -66,6 +67,21 @@ Touch ◀──I2C-Polling── LVGL-Eingabetreiber
 2. Schritt 1: Die Auswertung per GPIO-Interrupt verlor bei schnellem Drehen Schritte, sobald
    WLAN und Bildaufbau liefen (10 Klicks ergaben nur 2).
    Abhilfe: Zählen im Hardware-Zähler PCNT.
+
+## Bedienmodi (ab Schritt 4)
+
+`ModeController` (app_core) entscheidet, was Drehring und Taste gerade bedeuten. Er führt nichts
+selbst aus, sondern gibt eine `Action` zurück, die `RemoteApp::apply()` umsetzt. So ist die ganze
+Bedienlogik mit Timeouts und Sonderfällen auf dem PC testbar.
+
+| Modus  | Ring drehen          | kurz drücken         | lang drücken |
+|--------|----------------------|----------------------|--------------|
+| Normal | Lautstärke           | Play/Pause           | Menü öffnen  |
+| Menü   | Eintrag wählen       | Eintrag ausführen    | schließen    |
+| Spulen | Zielposition ändern  | dorthin springen     | abbrechen    |
+
+Menü und Spulen schließen sich nach 10 s ohne Eingabe. Noch nicht verfügbare Menüpunkte (Räume,
+Favoriten) werden angezeigt, aber beim Drehen übersprungen.
 
 ## Nebenläufigkeit (ab Schritt 1)
 

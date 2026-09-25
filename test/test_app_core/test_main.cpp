@@ -7,6 +7,7 @@
 
 #include "ButtonDetector.h"
 #include "DetentTracker.h"
+#include "ModeController.h"
 #include "PlaybackController.h"
 #include "ProgressTracker.h"
 #include "VolumeController.h"
@@ -14,6 +15,7 @@
 using app::ButtonDetector;
 using app::ButtonEvent;
 using app::DetentTracker;
+using app::ModeController;
 using app::PlaybackController;
 using app::ProgressTracker;
 using app::PlayState;
@@ -364,6 +366,133 @@ void test_progress_millis_wraparound() {
     TEST_ASSERT_EQUAL_INT(12, p.positionSec(1000u));
 }
 
+// --- ModeController -----------------------------------------------------------
+
+using Act = ModeController::Action::Type;
+using Mode = ModeController::Mode;
+using Item = ModeController::MenuItem;
+
+static ModeController::Context trackCtx(int pos = 60, int dur = 200) {
+    ModeController::Context c;
+    c.canScrub = true;
+    c.positionSec = pos;
+    c.durationSec = dur;
+    return c;
+}
+
+void test_mode_normal_maps_ring_and_button() {
+    ModeController m;
+    TEST_ASSERT_TRUE(m.onDetents(+2, 100, trackCtx()).type == Act::Volume);
+    TEST_ASSERT_EQUAL_INT(2, m.onDetents(+2, 200, trackCtx()).value);
+    TEST_ASSERT_TRUE(m.onShortPress(300, trackCtx()).type == Act::TogglePlayPause);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_long_press_opens_and_closes_menu() {
+    ModeController m;
+    auto a = m.onLongPress(100);
+    TEST_ASSERT_TRUE(a.type == Act::MenuOpened);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Menu);
+    TEST_ASSERT_TRUE(m.onLongPress(200).type == Act::MenuClosed);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_menu_selection_skips_disabled_and_wraps() {
+    ModeController m;
+    m.onLongPress(0);  // Spulen
+    // Räume und Favoriten sind noch deaktiviert -> nächster ist „Schließen“, dann wieder „Spulen“
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 10, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 20, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 30, trackCtx()).value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Menu);  // Drehen im Menü ändert keine Lautstärke
+}
+
+void test_mode_menu_close_item() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onDetents(+1, 10, trackCtx());  // Schließen
+    TEST_ASSERT_TRUE(m.onShortPress(20, trackCtx()).type == Act::MenuClosed);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_menu_times_out() {
+    ModeController m(10000);
+    m.onLongPress(1000);
+    TEST_ASSERT_TRUE(m.tick(10999).type == Act::None);
+    TEST_ASSERT_TRUE(m.tick(11000).type == Act::MenuClosed);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+    TEST_ASSERT_TRUE(m.tick(30000).type == Act::None);
+}
+
+void test_mode_scrub_starts_at_current_position() {
+    ModeController m;
+    m.onLongPress(0);
+    auto a = m.onShortPress(10, trackCtx(62, 225));
+    TEST_ASSERT_TRUE(a.type == Act::ScrubStarted);
+    TEST_ASSERT_EQUAL_INT(62, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Scrub);
+}
+
+void test_mode_scrub_step_and_commit() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onShortPress(10, trackCtx(60, 1000));                                  // Schritt = 1 % = 10 s
+    TEST_ASSERT_EQUAL_INT(70, m.onDetents(+1, 1000, trackCtx(60, 1000)).value);
+    TEST_ASSERT_EQUAL_INT(60, m.onDetents(-1, 2000, trackCtx(60, 1000)).value);
+    auto a = m.onShortPress(3000, trackCtx(60, 1000));
+    TEST_ASSERT_TRUE(a.type == Act::ScrubCommitted);
+    TEST_ASSERT_EQUAL_INT(60, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_scrub_minimum_step_and_fast_turn() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onShortPress(10, trackCtx(60, 200));                                   // 1 % = 2 s -> min. 5 s
+    TEST_ASSERT_EQUAL_INT(65, m.onDetents(+1, 1000, trackCtx(60, 200)).value);
+    TEST_ASSERT_EQUAL_INT(80, m.onDetents(+1, 1030, trackCtx(60, 200)).value);  // schnell: 3 × 5 s
+}
+
+void test_mode_scrub_clamped() {
+    ModeController m;
+    m.onLongPress(0);
+    m.onShortPress(10, trackCtx(190, 200));
+    TEST_ASSERT_EQUAL_INT(200, m.onDetents(+5, 1000, trackCtx(190, 200)).value);
+    TEST_ASSERT_EQUAL_INT(0, m.onDetents(-100, 2000, trackCtx(190, 200)).value);
+}
+
+void test_mode_scrub_cancel_by_long_press_and_timeout() {
+    ModeController m(10000);
+    m.onLongPress(0);
+    m.onShortPress(10, trackCtx());
+    TEST_ASSERT_TRUE(m.onLongPress(100).type == Act::ScrubCancelled);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+
+    m.onLongPress(200);
+    m.onShortPress(210, trackCtx());
+    TEST_ASSERT_TRUE(m.tick(10210).type == Act::ScrubCancelled);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_scrub_not_available_for_radio() {
+    ModeController m;
+    m.onLongPress(0);
+    ModeController::Context radio;  // canScrub = false
+    auto a = m.onShortPress(10, radio);
+    TEST_ASSERT_TRUE(a.type == Act::NotAvailable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_input_resets_timeout() {
+    ModeController m(10000);
+    m.onLongPress(0);
+    m.onDetents(+1, 9000, trackCtx());
+    TEST_ASSERT_TRUE(m.tick(15000).type == Act::None);  // erst 10 s nach der letzten Eingabe
+    TEST_ASSERT_TRUE(m.tick(19000).type == Act::MenuClosed);
+}
+
 // --- ButtonDetector ---------------------------------------------------------
 
 // Hilfsfunktion: hält einen Pegel über eine Zeitspanne und sammelt Ereignisse.
@@ -466,6 +595,18 @@ int main(int, char**) {
     RUN_TEST(test_progress_no_duration_means_unknown);
     RUN_TEST(test_progress_jump_to);
     RUN_TEST(test_progress_millis_wraparound);
+    RUN_TEST(test_mode_normal_maps_ring_and_button);
+    RUN_TEST(test_mode_long_press_opens_and_closes_menu);
+    RUN_TEST(test_mode_menu_selection_skips_disabled_and_wraps);
+    RUN_TEST(test_mode_menu_close_item);
+    RUN_TEST(test_mode_menu_times_out);
+    RUN_TEST(test_mode_scrub_starts_at_current_position);
+    RUN_TEST(test_mode_scrub_step_and_commit);
+    RUN_TEST(test_mode_scrub_minimum_step_and_fast_turn);
+    RUN_TEST(test_mode_scrub_clamped);
+    RUN_TEST(test_mode_scrub_cancel_by_long_press_and_timeout);
+    RUN_TEST(test_mode_scrub_not_available_for_radio);
+    RUN_TEST(test_mode_input_resets_timeout);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

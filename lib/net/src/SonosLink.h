@@ -22,7 +22,7 @@ struct Event {
 };
 
 /** Befehl an den Speaker. */
-enum class Transport : uint8_t { Play, Pause, Next, Previous };
+enum class Transport : uint8_t { Play, Pause, Next, Previous, Seek };
 
 /**
  * Was gerade läuft – Momentaufnahme der letzten Abfrage.
@@ -65,6 +65,9 @@ public:
 
     /** Play, Pause, Nächster, Vorheriger (nicht blockierend). */
     static void transport(Transport command);
+
+    /** Im aktuellen Titel an `positionSec` springen (nicht blockierend). */
+    static void seek(int positionSec);
 
     /** Nächste Meldung abholen (nicht blockierend). @return false, wenn keine vorliegt. */
     static bool pollEvent(Event& out);

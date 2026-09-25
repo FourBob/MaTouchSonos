@@ -5,7 +5,7 @@
 #include "PlaybackController.h"
 
 /**
- * Now-Playing-Bildschirm (Stand Schritt 3).
+ * Now-Playing-Bildschirm (Stand Schritt 4).
  *
  *        ┌──── Fortschrittsring (360°, beginnt oben) ────┐
  *        │              ▶ / ❚❚  (Zustand)                │
@@ -19,6 +19,11 @@
  * Beim Drehen blendet sich darüber die Lautstärke ein (270°-Bogen + große Zahl) und
  * verschwindet 2 s nach der letzten Änderung wieder.
  * Wischen nach links/rechts meldet der Bildschirm über den Swipe-Callback.
+ *
+ * Ringmenü (Langdruck): Einträge liegen im Kreis (oben, rechts, unten, links), der
+ * gewählte ist grün hinterlegt, sein Name steht in der Mitte.
+ * Spulen: Der Fortschrittsring wird dicker und bekommt einen Punkt an der Zielposition,
+ * die Zielzeit steht groß in der Mitte.
  */
 class NowPlayingScreen {
 public:
@@ -42,6 +47,14 @@ public:
 
     enum class Status { Info, Ok, Error };
     void setStatus(const char* text, Status kind);
+
+    /** Ringmenü öffnen bzw. Auswahl aktualisieren (Index = app::ModeController::MenuItem). */
+    void showMenu(int selection);
+    void hideMenu();
+
+    /** Spulen-Ansicht zeigen bzw. aktualisieren. Solange sie aktiv ist, ignoriert setProgress den Ring. */
+    void showScrub(int targetSec, int durationSec);
+    void hideScrub();
 
     /** Regelmäßig aufrufen (blendet die Lautstärke nach Ablauf aus). */
     void tick(uint32_t nowMs);
