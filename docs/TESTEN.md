@@ -364,7 +364,8 @@ Die Ausgabe von `favorites list` bitte mitschicken (Namen der Kinder vorher erse
 
 **Am Gerät** (`pio run -e matouch -t upload`):
 
-- [ ] Nach dem Start steht im Log `FAVORITEN: n geladen (… ms)`, n stimmt mit der Sonos-App überein
+- [ ] Nach dem Start steht im Log `FAVORITEN: n geladen, m nicht abspielbar ausgeblendet (… ms)`;
+      n + m stimmt mit der Sonos-App überein (ausgeblendet werden reine Verknüpfungen wie Podcast-Seiten)
 - [ ] Langdruck → Menü → „Favoriten“ → Liste als Drehrad; unten steht der Dienst (z. B. „TuneIn · 3 / 12“)
 - [ ] Je Art einmal abspielen und prüfen, dass Now Playing (Titel, Cover) nachzieht:
 
@@ -373,7 +374,7 @@ Die Ausgabe von `favorites list` bitte mitschicken (Namen der Kinder vorher erse
 | Radiosender (TuneIn / Sonos Radio) | direkt | | |
 | Spotify-Playlist | Warteschlange | | |
 | Album | Warteschlange | | |
-| Einzeltitel | Warteschlange | | |
+| Einzeltitel (Spotify, Amazon Music) | Warteschlange | | |
 | Sonos-Playlist (falls vorhanden) | Warteschlange | | |
 
 - [ ] Im gruppierten Raum (z. B. „Esszimmer + 1“) spielt der Favorit in der ganzen Gruppe

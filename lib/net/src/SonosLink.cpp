@@ -470,6 +470,7 @@ bool loadFavorites(Link& link) {
     std::string body;
     int start = 0;
     int total = 0;
+    int hidden = 0;
     const uint32_t began = millis();
     do {
         const sonos::SoapResult r =
@@ -480,6 +481,12 @@ bool loadFavorites(Link& link) {
                                         [&](int position, sonos::Favorite&& f) {
                                             ++seen;
                                             if (f.title.empty() || fresh.count >= kMaxFavorites) return;
+                                            // Reine Verknüpfungen (z. B. Podcast-Seiten) haben keine Adresse –
+                                            // gar nicht erst anbieten statt beim Drücken einen Fehler zu zeigen.
+                                            if (sonos::favorites::playMethod(f) == sonos::PlayMethod::Unsupported) {
+                                                ++hidden;
+                                                return;
+                                            }
                                             FavoriteEntry& e = fresh.items[fresh.count++];
                                             copyUtf8(e.title, f.title, sizeof(e.title));
                                             copyUtf8(e.detail, f.description, sizeof(e.detail));
@@ -501,8 +508,8 @@ bool loadFavorites(Link& link) {
     gFavorites->version = version;
     gFavorites->loaded = true;
     xSemaphoreGive(gFavoritesMutex);
-    Serial.printf("FAVORITEN: %d geladen (%lu ms)%s\n", fresh.count, static_cast<unsigned long>(millis() - began),
-                  total > kMaxFavorites ? " – Liste gekürzt" : "");
+    Serial.printf("FAVORITEN: %d geladen, %d nicht abspielbar ausgeblendet (%lu ms)%s\n", fresh.count, hidden,
+                  static_cast<unsigned long>(millis() - began), total > kMaxFavorites ? " – Liste gekürzt" : "");
     return true;
 }
 

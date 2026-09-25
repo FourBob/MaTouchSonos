@@ -386,7 +386,11 @@ void test_favorites_play_method() {
     f.uri = "x-sonos-http:station.m3u8?sid=204";
     f.upnpClass = "object.item.audioItem.audioBroadcast";
     TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Direct);
-    // Apple-Music-Titel (hls-static) ist kein Radio
+    // Verknüpfung auf eine Podcast-Seite: Metadaten vorhanden, aber keine Adresse (Pocket Casts, Geräte-Test)
+    f.uri.clear();
+    f.upnpClass = "object.container";
+    TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Unsupported);
+    // Amazon-/Apple-Music-Titel (hls-static) ist kein Radio
     f.uri = "x-sonosapi-hls-static:song%3a123?sid=204";
     f.upnpClass = "object.item.audioItem.musicTrack";
     TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Queue);

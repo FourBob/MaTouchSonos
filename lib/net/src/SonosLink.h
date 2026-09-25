@@ -61,7 +61,7 @@ struct RoomsInfo {
 };
 
 /**
- * Sonos-Favoriten – nur was die Anzeige braucht. Adresse und Metadaten holt die Task erst
+ * Sonos-Favoriten (ohne nicht abspielbare Verknüpfungen) – nur was die Anzeige braucht. Adresse und Metadaten holt die Task erst
  * beim Abspielen (einzeln), damit 100 Favoriten nicht dauerhaft Speicher belegen.
  * Groß (~10 KB): Kopien davon gehören in den PSRAM.
  */
