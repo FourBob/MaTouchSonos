@@ -40,9 +40,10 @@ inline uint16_t pack565(int r, int g, int b) {
 /**
  * Skaliert `src` so, dass `dst` vollständig bedeckt ist („cover“), und schneidet mittig zu.
  * Bilineare Interpolation – einmal pro Cover, danach kostet das Anzeigen nichts mehr.
+ * `factor` dunkelt gleich mit ab (wie darken(), 256 = unverändert) – spart einen Durchlauf.
  */
-inline void coverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int dw, int dh) {
-    if (sw <= 0 || sh <= 0) return;
+inline void coverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int dw, int dh, uint16_t factor = 256) {
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
     // Ausschnitt der Quelle mit dem Seitenverhältnis des Ziels, mittig
     int cropW = sw, cropH = sh;
     if (static_cast<int64_t>(sw) * dh > static_cast<int64_t>(sh) * dw) {
@@ -52,6 +53,14 @@ inline void coverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int 
     }
     const int offX = (sw - cropW) / 2;
     const int offY = (sh - cropH) / 2;
+
+    // Spaltenposition in Festkomma 16.16: fx(x) = ((2x+1)·cropW·2^15) / dw − 2^15.
+    // Schrittweise als Quotient + Rest berechnet – exakt gleich, aber ohne 64-Bit-Division
+    // je Pixel (auf dem ESP32 teuer).
+    const int32_t colStepQ = static_cast<int32_t>((static_cast<int64_t>(cropW) << 16) / dw);
+    const int32_t colStepR = static_cast<int32_t>((static_cast<int64_t>(cropW) << 16) % dw);
+    const int32_t colStartQ = static_cast<int32_t>((static_cast<int64_t>(cropW) << 15) / dw);
+    const int32_t colStartR = static_cast<int32_t>((static_cast<int64_t>(cropW) << 15) % dw);
 
     for (int y = 0; y < dh; ++y) {
         // Festkomma 16.16: Pixelmitte des Ziels auf die Quelle abbilden
@@ -64,8 +73,15 @@ inline void coverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int 
         const uint16_t* row1 = src + static_cast<size_t>(offY + y1) * sw + offX;
         uint16_t* out = dst + static_cast<size_t>(y) * dw;
 
+        int32_t q = colStartQ, r = colStartR;
         for (int x = 0; x < dw; ++x) {
-            const int32_t fx = static_cast<int32_t>(((static_cast<int64_t>(x) * 2 + 1) * cropW << 15) / dw) - 32768;
+            const int32_t fx = q - 32768;
+            q += colStepQ;
+            r += colStepR;
+            if (r >= dw) {
+                r -= dw;
+                ++q;
+            }
             int x0 = fx < 0 ? 0 : (fx >> 16);
             if (x0 > cropW - 1) x0 = cropW - 1;
             const int x1 = x0 + 1 < cropW ? x0 + 1 : cropW - 1;
@@ -77,7 +93,8 @@ inline void coverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int 
                 const int c = (p10 >> shift) & mask, d = (p11 >> shift) & mask;
                 const int top = a * (256 - wx) + b * wx;
                 const int bottom = c * (256 - wx) + d * wx;
-                return (top * (256 - wy) + bottom * wy + (1 << 15)) >> 16;
+                const int v = (top * (256 - wy) + bottom * wy + (1 << 15)) >> 16;
+                return (v * factor) >> 8;
             };
             out[x] = pack565(lerp2(11, 0x1F), lerp2(5, 0x3F), lerp2(0, 0x1F));
         }

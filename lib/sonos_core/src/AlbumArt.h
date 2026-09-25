@@ -29,6 +29,22 @@ std::vector<std::string> candidates(const NowPlaying& np, const std::string& spe
 /** Größen in bekannten Bild-URLs auf ca. 480 px umschreiben (sonst unverändert). */
 std::string preferredSize(const std::string& url);
 
+/** Bestandteile einer Bildadresse – für die Entscheidung, ob eine offene Verbindung passt. */
+struct UrlParts {
+    bool https = false;
+    std::string host;
+    int port = 0;
+};
+
+/** Zerlegt „http(s)://host[:port]/…“. @return false bei anderem Schema oder fehlendem Host. */
+bool splitUrl(const std::string& url, UrlParts& out);
+
+/**
+ * Ziel einer Weiterleitung (HTTP-Header Location) als absolute Adresse. Relative Angaben
+ * („/pfad“) beziehen sich auf den Server der ursprünglichen Adresse. Leer = unbrauchbar.
+ */
+std::string resolveRedirect(const std::string& from, const std::string& location);
+
 /** Prozent-Kodierung für URL-Parameter (RFC 3986, unreserviert: A–Z a–z 0–9 - _ . ~). */
 std::string urlEncode(const std::string& text);
 

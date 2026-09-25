@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 
 namespace sonos {
 namespace art {
@@ -96,6 +97,41 @@ std::vector<std::string> candidates(const NowPlaying& np, const std::string& spe
         addUnique(list, speaker + "/getaa?s=1&u=" + urlEncode(np.trackUri));
     }
     return list;
+}
+
+bool splitUrl(const std::string& url, UrlParts& out) {
+    size_t hostStart;
+    if (url.rfind("https://", 0) == 0) {
+        out.https = true;
+        hostStart = 8;
+    } else if (url.rfind("http://", 0) == 0) {
+        out.https = false;
+        hostStart = 7;
+    } else {
+        return false;
+    }
+    const size_t hostEnd = url.find_first_of(":/?#", hostStart);
+    out.host = url.substr(hostStart, hostEnd == std::string::npos ? std::string::npos : hostEnd - hostStart);
+    if (out.host.empty()) return false;
+    out.port = out.https ? 443 : 80;
+    if (hostEnd != std::string::npos && url[hostEnd] == ':') {
+        const size_t portEnd = url.find_first_of("/?#", hostEnd + 1);
+        const std::string port = url.substr(hostEnd + 1, portEnd == std::string::npos ? std::string::npos : portEnd - hostEnd - 1);
+        if (port.empty() || port.size() > 5 || port.find_first_not_of("0123456789") != std::string::npos) return false;
+        out.port = std::atoi(port.c_str());
+        if (out.port <= 0 || out.port > 65535) return false;
+    }
+    return true;
+}
+
+std::string resolveRedirect(const std::string& from, const std::string& location) {
+    UrlParts parts;
+    if (splitUrl(location, parts)) return location;
+    if (location.empty() || location[0] != '/' || location.rfind("//", 0) == 0) return {};
+    if (!splitUrl(from, parts)) return {};
+    const bool defaultPort = parts.port == (parts.https ? 443 : 80);
+    return std::string(parts.https ? "https://" : "http://") + parts.host +
+           (defaultPort ? "" : ":" + std::to_string(parts.port)) + location;
 }
 
 }  // namespace art

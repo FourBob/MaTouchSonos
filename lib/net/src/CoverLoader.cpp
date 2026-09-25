@@ -11,6 +11,7 @@
 #include <atomic>
 #include <new>
 
+#include "AlbumArt.h"
 #include "ImageOps.h"
 
 namespace net {
@@ -20,6 +21,8 @@ constexpr size_t kMaxDownloadBytes = 700 * 1024;
 constexpr int kMaxDecodeSide = 1600;       // größere Bilder (nach JPEG-Verkleinerung) werden verworfen
 constexpr uint16_t kDarkenFactor = 105;    // ≈ 41 % Helligkeit – Text bleibt lesbar
 constexpr uint32_t kHttpTimeoutMs = 4000;  // HTTPS-Handshake kann ~1 s dauern
+constexpr uint32_t kKeepOpenMs = 60000;    // offene Verbindung so lange für den nächsten Titel behalten
+constexpr int kMaxRedirects = 3;
 
 // --- Auftrag (von der Sonos-Task gesetzt) -------------------------------------
 SemaphoreHandle_t gRequestMutex = nullptr;
@@ -165,58 +168,143 @@ private:
     bool overflow_ = false;
 };
 
+// Offene Verbindungen (je eine für HTTP und HTTPS) bleiben nach dem Download bestehen:
+// Beim nächsten Cover vom selben Server entfällt der Verbindungsaufbau – bei HTTPS
+// (Spotify, TuneIn) spart das den TLS-Handshake. Nur die Cover-Task greift darauf zu.
+struct Connection {
+    WiFiClient* client;
+    std::string key;        // „host:port“ der offenen Verbindung
+    uint32_t lastUse = 0;
+};
+WiFiClient gPlainClient;
+WiFiClientSecure gSecureClient;
+Connection gPlain{&gPlainClient};
+Connection gSecure{&gSecureClient};
+HTTPClient gHttp;  // bleibt bestehen – der Destruktor würde die Verbindung schließen
+
+void closeConnection(Connection& c) {
+    c.client->stop();
+    c.key.clear();
+}
+
+/** Schließt Verbindungen, die länger nicht gebraucht wurden (gibt v. a. den TLS-Speicher frei). */
+void closeIdleConnections() {
+    for (Connection* c : {&gPlain, &gSecure}) {
+        if (!c->key.empty() && millis() - c->lastUse > kKeepOpenMs) closeConnection(*c);
+    }
+}
+
+/** Zeiten eines Downloads fürs Log. */
+struct DownloadStats {
+    uint32_t connectMs = 0;   // Verbindungsaufbau inkl. TLS-Handshake
+    uint32_t transferMs = 0;  // Anfrage bis letztes Byte
+    bool reused = false;      // bestehende Verbindung genutzt
+};
+
+/**
+ * Sorgt für eine offene Verbindung zum Server von `url`. Eine Verbindung zu einem anderen
+ * Server wird vorher geschlossen – der HTTPClient würde sie sonst ungeprüft weiterverwenden.
+ */
+Connection* connectTo(const sonos::art::UrlParts& u, DownloadStats& stats, std::string& why) {
+    Connection& c = u.https ? gSecure : gPlain;
+    const std::string key = u.host + ":" + std::to_string(u.port);
+    if (c.key == key && c.client->connected()) {
+        stats.reused = true;
+        return &c;
+    }
+    closeConnection(c);
+    const uint32_t start = millis();
+    if (!c.client->connect(u.host.c_str(), static_cast<uint16_t>(u.port), static_cast<int32_t>(kHttpTimeoutMs))) {
+        why = "keine Verbindung zu " + u.host;
+        return nullptr;
+    }
+    stats.connectMs += millis() - start;
+    // Lese-Timeout in Sekunden – setzt sonst HTTPClient::connect(), das bei offener Verbindung übersprungen wird.
+    c.client->setTimeout((kHttpTimeoutMs + 500) / 1000);
+    c.key = key;
+    return &c;
+}
+
 /** Lädt `url` in einen neuen PSRAM-Puffer. @return Größe in Bytes, 0 bei Fehler. */
-size_t download(const std::string& url, uint8_t*& data, std::string& why) {
+size_t download(const std::string& firstUrl, uint8_t*& data, DownloadStats& stats, std::string& why) {
     data = nullptr;
-    const bool https = url.rfind("https://", 0) == 0;
-    WiFiClient plain;
-    WiFiClientSecure secure;
-    if (https) secure.setInsecure();  // nur öffentliche Bilder, siehe CoverLoader.h
+    std::string url = firstUrl;
+    bool retried = false;
 
-    HTTPClient http;
-    http.setConnectTimeout(kHttpTimeoutMs);
-    http.setTimeout(kHttpTimeoutMs);
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setUserAgent("MaTouchSonos/1.0");
-    const bool begun = https ? http.begin(secure, url.c_str()) : http.begin(plain, url.c_str());
-    if (!begun) {
-        why = "URL ungültig";
-        return 0;
-    }
+    for (int redirects = 0;;) {
+        sonos::art::UrlParts parts;
+        if (!sonos::art::splitUrl(url, parts)) {
+            why = "URL ungültig";
+            return 0;
+        }
+        Connection* conn = connectTo(parts, stats, why);
+        if (!conn) return 0;
 
-    const int status = http.GET();
-    if (status != HTTP_CODE_OK) {
-        why = "HTTP " + std::to_string(status);
-        http.end();
-        return 0;
-    }
-    const int announced = http.getSize();  // -1 bei „chunked“
-    if (announced > static_cast<int>(kMaxDownloadBytes)) {
-        why = "zu groß (" + std::to_string(announced / 1024) + " KB)";
-        http.end();
-        return 0;
-    }
-    const size_t capacity = announced > 0 ? static_cast<size_t>(announced) : kMaxDownloadBytes;
-    data = static_cast<uint8_t*>(psramAlloc(capacity));
-    if (!data) {
-        why = "kein Speicher (Download)";
-        http.end();
-        return 0;
-    }
+        if (!gHttp.begin(*conn->client, url.c_str())) {
+            why = "URL ungültig";
+            return 0;
+        }
+        const uint32_t requested = millis();
+        const int status = gHttp.GET();
+        if (status < 0 && stats.reused && !retried) {
+            // Der Server hat die offene Verbindung inzwischen geschlossen – einmal neu verbinden.
+            closeConnection(*conn);
+            retried = true;
+            stats.reused = false;
+            continue;
+        }
+        if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+            // Weiterleitungen selbst verfolgen: Der Server kann wechseln, die Verbindung dann auch.
+            const std::string next = sonos::art::resolveRedirect(url, gHttp.getLocation().c_str());
+            closeConnection(*conn);  // Antworttext der Weiterleitung nicht mitlesen
+            if (next.empty() || ++redirects > kMaxRedirects) {
+                why = "Weiterleitung nicht verfolgbar";
+                return 0;
+            }
+            url = next;
+            continue;
+        }
+        if (status != HTTP_CODE_OK) {
+            why = "HTTP " + std::to_string(status);
+            closeConnection(*conn);
+            return 0;
+        }
 
-    // writeToStream() beachtet Content-Length und „chunked“-Kodierung.
-    BufferStream sink(data, capacity);
-    const int written = http.writeToStream(&sink);
-    http.end();
-    if (written < 0 || sink.overflow() || sink.size() == 0 ||
-        (announced > 0 && sink.size() != static_cast<size_t>(announced))) {
-        why = sink.overflow() ? std::string("zu groß") : "unvollständig (" + std::to_string(sink.size()) + " Bytes, Code " +
-                                                          std::to_string(written) + ")";
-        heap_caps_free(data);
-        data = nullptr;
-        return 0;
+        const int announced = gHttp.getSize();  // -1 bei „chunked“
+        if (announced > static_cast<int>(kMaxDownloadBytes)) {
+            why = "zu groß (" + std::to_string(announced / 1024) + " KB)";
+            closeConnection(*conn);
+            return 0;
+        }
+        const size_t capacity = announced > 0 ? static_cast<size_t>(announced) : kMaxDownloadBytes;
+        data = static_cast<uint8_t*>(psramAlloc(capacity));
+        if (!data) {
+            why = "kein Speicher (Download)";
+            closeConnection(*conn);
+            return 0;
+        }
+
+        // writeToStream() beachtet Content-Length und „chunked“-Kodierung.
+        BufferStream sink(data, capacity);
+        const int written = gHttp.writeToStream(&sink);
+        stats.transferMs = millis() - requested;
+        if (written < 0 || sink.overflow() || sink.size() == 0 ||
+            (announced > 0 && sink.size() != static_cast<size_t>(announced))) {
+            why = sink.overflow() ? std::string("zu groß")
+                                  : "unvollständig (" + std::to_string(sink.size()) + " Bytes, Code " +
+                                        std::to_string(written) + ")";
+            closeConnection(*conn);
+            heap_caps_free(data);
+            data = nullptr;
+            return 0;
+        }
+        // Antwort vollständig gelesen: end() lässt die Verbindung offen, sofern der Server
+        // „keep-alive“ erlaubt (sonst schließt der HTTPClient sie selbst).
+        gHttp.end();
+        conn->lastUse = millis();
+        if (!conn->client->connected()) conn->key.clear();
+        return sink.size();
     }
-    return sink.size();
 }
 
 // --- Task -------------------------------------------------------------------------
@@ -233,10 +321,10 @@ void waitForAck() {
 }
 
 bool loadInto(const std::string& url, uint16_t* target) {
-    const uint32_t start = millis();
     std::string why;
     uint8_t* data = nullptr;
-    const size_t size = download(url, data, why);
+    DownloadStats stats;
+    const size_t size = download(url, data, stats, why);
     if (size == 0) {
         Serial.printf("COVER %s – Download fehlgeschlagen: %s\n", url.c_str(), why.c_str());
         return false;
@@ -252,20 +340,31 @@ bool loadInto(const std::string& url, uint16_t* target) {
         return false;
     }
 
-    app::img::coverResize(img.pixels, img.width, img.height, target, kCoverSize, kCoverSize);
+    const uint32_t decoded = millis();
+    app::img::coverResize(img.pixels, img.width, img.height, target, kCoverSize, kCoverSize, kDarkenFactor);
     heap_caps_free(img.pixels);
-    app::img::darken(target, static_cast<size_t>(kCoverSize) * kCoverSize, kDarkenFactor);
-    Serial.printf("COVER ok: %u KB, %dx%d, Download %lu ms, Aufbereitung %lu ms – %s\n",
+    Serial.printf("COVER ok: %u KB, %dx%d, Verbindung %s, Übertragung %lu ms, Dekodieren %lu ms, "
+                  "Skalieren %lu ms – %s\n",
                   static_cast<unsigned>(size / 1024), img.width, img.height,
-                  static_cast<unsigned long>(downloaded - start), static_cast<unsigned long>(millis() - downloaded),
-                  url.c_str());
+                  stats.reused ? "wiederverwendet" : (std::to_string(stats.connectMs) + " ms").c_str(),
+                  static_cast<unsigned long>(stats.transferMs), static_cast<unsigned long>(decoded - downloaded),
+                  static_cast<unsigned long>(millis() - decoded), url.c_str());
     return true;
 }
 
 void task(void*) {
+    gSecureClient.setInsecure();  // nur öffentliche Bilder, siehe CoverLoader.h
+    gSecureClient.setHandshakeTimeout(kHttpTimeoutMs / 1000);
+    gHttp.setReuse(true);
+    gHttp.setConnectTimeout(kHttpTimeoutMs);
+    gHttp.setTimeout(kHttpTimeoutMs);
+    gHttp.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);  // selbst verfolgt, siehe download()
+    gHttp.setUserAgent("MaTouchSonos/1.0");
+
     uint32_t handledSeq = 0;
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+        closeIdleConnections();
 
         xSemaphoreTake(gRequestMutex, portMAX_DELAY);
         const uint32_t seq = gRequestSeq;

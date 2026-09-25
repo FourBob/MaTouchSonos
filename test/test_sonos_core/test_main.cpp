@@ -277,6 +277,41 @@ void test_nowplaying_tv_from_media_when_track_uri_empty() {
     TEST_ASSERT_TRUE(np.kind == SourceKind::TV);
 }
 
+void test_art_split_url() {
+    art::UrlParts u;
+    TEST_ASSERT_TRUE(art::splitUrl("https://i.scdn.co/image/ab67616d0000b273", u));
+    TEST_ASSERT_TRUE(u.https);
+    TEST_ASSERT_EQUAL_STRING("i.scdn.co", u.host.c_str());
+    TEST_ASSERT_EQUAL_INT(443, u.port);
+
+    TEST_ASSERT_TRUE(art::splitUrl("http://192.168.1.10:1400/getaa?s=1&u=x", u));
+    TEST_ASSERT_FALSE(u.https);
+    TEST_ASSERT_EQUAL_STRING("192.168.1.10", u.host.c_str());
+    TEST_ASSERT_EQUAL_INT(1400, u.port);
+
+    TEST_ASSERT_TRUE(art::splitUrl("http://example.com?x=1", u));
+    TEST_ASSERT_EQUAL_STRING("example.com", u.host.c_str());
+    TEST_ASSERT_EQUAL_INT(80, u.port);
+
+    TEST_ASSERT_FALSE(art::splitUrl("/getaa?s=1", u));
+    TEST_ASSERT_FALSE(art::splitUrl("ftp://host/x", u));
+    TEST_ASSERT_FALSE(art::splitUrl("http:///pfad", u));
+    TEST_ASSERT_FALSE(art::splitUrl("http://host:99999/", u));
+    TEST_ASSERT_FALSE(art::splitUrl("http://host:ab/", u));
+}
+
+void test_art_resolve_redirect() {
+    TEST_ASSERT_EQUAL_STRING("https://cdn.example.com/b.jpg",
+                             art::resolveRedirect("http://a.example.com/a.jpg", "https://cdn.example.com/b.jpg").c_str());
+    TEST_ASSERT_EQUAL_STRING("http://192.168.1.10:1400/img/b.png",
+                             art::resolveRedirect("http://192.168.1.10:1400/getaa?s=1", "/img/b.png").c_str());
+    TEST_ASSERT_EQUAL_STRING("https://a.example.com/b.jpg",
+                             art::resolveRedirect("https://a.example.com/a.jpg", "/b.jpg").c_str());
+    TEST_ASSERT_EQUAL_STRING("", art::resolveRedirect("https://a.example.com/a.jpg", "b.jpg").c_str());
+    TEST_ASSERT_EQUAL_STRING("", art::resolveRedirect("https://a.example.com/a.jpg", "//evil/b.jpg").c_str());
+    TEST_ASSERT_EQUAL_STRING("", art::resolveRedirect("https://a.example.com/a.jpg", "").c_str());
+}
+
 void test_nowplaying_rejects_unexpected_response() {
     PositionInfo pos;
     TEST_ASSERT_FALSE(parsePositionInfo(fixtures::kFault402, pos));
@@ -576,6 +611,8 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_tv_linein_and_empty);
     RUN_TEST(test_nowplaying_tv_from_media_when_track_uri_empty);
     RUN_TEST(test_nowplaying_rejects_unexpected_response);
+    RUN_TEST(test_art_split_url);
+    RUN_TEST(test_art_resolve_redirect);
     RUN_TEST(test_avtransport_next_previous_seek_requests);
     RUN_TEST(test_nowplaying_recorded_radio_dlf);
     RUN_TEST(test_nowplaying_recorded_radio_dlf_without_media_hides_stream_filename);

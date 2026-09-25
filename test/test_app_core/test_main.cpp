@@ -604,6 +604,68 @@ void test_img_cover_resize_upscale_keeps_corners() {
     TEST_ASSERT_EQUAL_HEX16(d, dst[63]);
 }
 
+/** Ursprüngliche Fassung (64-Bit-Division je Pixel) als Referenz für die schnelle Variante. */
+static void referenceCoverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int dw, int dh) {
+    int cropW = sw, cropH = sh;
+    if (static_cast<int64_t>(sw) * dh > static_cast<int64_t>(sh) * dw) {
+        cropW = static_cast<int>(static_cast<int64_t>(sh) * dw / dh);
+    } else {
+        cropH = static_cast<int>(static_cast<int64_t>(sw) * dh / dw);
+    }
+    const int offX = (sw - cropW) / 2, offY = (sh - cropH) / 2;
+    for (int y = 0; y < dh; ++y) {
+        const int32_t fy = static_cast<int32_t>(((static_cast<int64_t>(y) * 2 + 1) * cropH << 15) / dh) - 32768;
+        int y0 = fy < 0 ? 0 : (fy >> 16);
+        if (y0 > cropH - 1) y0 = cropH - 1;
+        const int y1 = y0 + 1 < cropH ? y0 + 1 : cropH - 1;
+        const int wy = fy < 0 ? 0 : ((fy >> 8) & 0xFF);
+        for (int x = 0; x < dw; ++x) {
+            const int32_t fx = static_cast<int32_t>(((static_cast<int64_t>(x) * 2 + 1) * cropW << 15) / dw) - 32768;
+            int x0 = fx < 0 ? 0 : (fx >> 16);
+            if (x0 > cropW - 1) x0 = cropW - 1;
+            const int x1 = x0 + 1 < cropW ? x0 + 1 : cropW - 1;
+            const int wx = fx < 0 ? 0 : ((fx >> 8) & 0xFF);
+            const uint16_t* r0 = src + static_cast<size_t>(offY + y0) * sw + offX;
+            const uint16_t* r1 = src + static_cast<size_t>(offY + y1) * sw + offX;
+            const uint16_t p00 = r0[x0], p01 = r0[x1], p10 = r1[x0], p11 = r1[x1];
+            auto lerp2 = [&](int shift, int mask) {
+                const int a = (p00 >> shift) & mask, b = (p01 >> shift) & mask;
+                const int c = (p10 >> shift) & mask, d = (p11 >> shift) & mask;
+                const int top = a * (256 - wx) + b * wx, bottom = c * (256 - wx) + d * wx;
+                return (top * (256 - wy) + bottom * wy + (1 << 15)) >> 16;
+            };
+            dst[static_cast<size_t>(y) * dw + x] = img::pack565(lerp2(11, 0x1F), lerp2(5, 0x3F), lerp2(0, 0x1F));
+        }
+    }
+}
+
+void test_img_cover_resize_matches_reference() {
+    // Echte Größen: Spotify 640², Senderlogo 300x225, Apple 1000² (nach JPEG-Verkleinerung 500²), 1600x900
+    const int sizes[][2] = {{640, 640}, {300, 225}, {500, 500}, {1600, 900}, {37, 91}};
+    static uint16_t src[1600 * 900];
+    static uint16_t fast[480 * 480], ref[480 * 480];
+    uint32_t seed = 12345;
+    for (auto& p : src) {
+        seed = seed * 1103515245u + 12345u;
+        p = static_cast<uint16_t>(seed >> 16);
+    }
+    for (const auto& sz : sizes) {
+        img::coverResize(src, sz[0], sz[1], fast, 480, 480);
+        referenceCoverResize(src, sz[0], sz[1], ref, 480, 480);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(ref, fast, 480 * 480);
+    }
+}
+
+void test_img_cover_resize_darkens_in_one_pass() {
+    static uint16_t src[64 * 64];
+    static uint16_t oneStep[48 * 48], twoSteps[48 * 48];
+    for (int i = 0; i < 64 * 64; ++i) src[i] = static_cast<uint16_t>(i * 37);
+    img::coverResize(src, 64, 64, oneStep, 48, 48, 105);
+    img::coverResize(src, 64, 64, twoSteps, 48, 48);
+    img::darken(twoSteps, 48 * 48, 105);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(twoSteps, oneStep, 48 * 48);
+}
+
 void test_img_darken() {
     uint16_t px[2] = {img::pack565(31, 63, 31), 0};
     img::darken(px, 2, 128);  // halbe Helligkeit
@@ -734,6 +796,8 @@ int main(int, char**) {
     RUN_TEST(test_img_cover_resize_uniform_color_stays);
     RUN_TEST(test_img_cover_resize_crops_center_of_wide_image);
     RUN_TEST(test_img_cover_resize_upscale_keeps_corners);
+    RUN_TEST(test_img_cover_resize_matches_reference);
+    RUN_TEST(test_img_cover_resize_darkens_in_one_pass);
     RUN_TEST(test_img_darken);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
