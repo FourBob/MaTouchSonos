@@ -111,12 +111,18 @@ bool parseZoneGroupState(const std::string& body, std::vector<ZoneGroup>& out) {
         const size_t groupLimit = groupClose == std::string::npos ? limit : groupClose;
 
         forEachTag(inner, "ZoneGroupMember", groupPos, groupLimit, [&](const Attributes& ma, size_t, size_t) {
-            if (attr(ma, "Invisible") == "1" || attr(ma, "IsZoneBridge") == "1") return;
             ZoneMember m;
             m.uuid = attr(ma, "UUID");
             m.ip = ipFromLocation(attr(ma, "Location"));
             m.name = attr(ma, "ZoneName");
             if (m.uuid.empty() || m.ip.empty()) return;
+            if (attr(ma, "IsZoneBridge") == "1") return;
+            if (attr(ma, "Invisible") == "1") {
+                // Zweiter Lautsprecher eines Stereopaars: nicht anzeigen. Ist er aber der
+                // Koordinator, müssen Befehle trotzdem an seine IP gehen.
+                if (m.uuid == g.coordinatorUuid) g.coordinatorIp = m.ip;
+                return;
+            }
             if (m.uuid == g.coordinatorUuid) {
                 g.coordinatorIp = m.ip;
                 g.name = m.name;
@@ -126,8 +132,10 @@ bool parseZoneGroupState(const std::string& body, std::vector<ZoneGroup>& out) {
             }
         });
 
-        // Gruppen ohne sichtbaren Koordinator (z. B. nur eine Bridge) weglassen.
-        if (!g.coordinatorIp.empty()) groups.push_back(std::move(g));
+        // Unsichtbarer Koordinator (Stereopaar): Name vom ersten sichtbaren Mitglied.
+        if (g.name.empty() && !g.members.empty()) g.name = g.members.front().name;
+        // Gruppen ohne sichtbare Mitglieder (z. B. nur eine Bridge) weglassen.
+        if (!g.coordinatorIp.empty() && !g.members.empty()) groups.push_back(std::move(g));
     });
 
     std::sort(groups.begin(), groups.end(), [](const ZoneGroup& a, const ZoneGroup& b) { return a.name < b.name; });

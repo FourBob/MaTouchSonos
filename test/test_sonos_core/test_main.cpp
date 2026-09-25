@@ -399,6 +399,41 @@ void test_group_volume_requests() {
     TEST_ASSERT_EQUAL_INT(33, v);
 }
 
+void test_topology_recorded_installation() {
+    std::vector<ZoneGroup> groups;
+    TEST_ASSERT_TRUE(topology::parseZoneGroupState(fixtures::kZoneGroupStateRecorded, groups));
+    TEST_ASSERT_EQUAL_size_t(7, groups.size());  // 13 Geräte, 7 Räume
+    const char* expected[] = {"Bad Kinder", "Elternschlafzimmer", "Esszimmer", "Kinderzimmer 1",
+                              "Kinderzimmer 2", "Kinderzimmer 3", "Wohnzimmer"};
+    for (size_t i = 0; i < 7; ++i) {
+        TEST_ASSERT_EQUAL_STRING(expected[i], groups[i].displayName().c_str());
+        TEST_ASSERT_EQUAL_size_t(1, groups[i].members.size());  // keine Satelliten/Stereo-Zweitgeräte
+    }
+    TEST_ASSERT_EQUAL_STRING("192.168.178.118", groups[6].coordinatorIp.c_str());  // Wohnzimmer
+    TEST_ASSERT_EQUAL_STRING("192.168.178.69", groups[2].coordinatorIp.c_str());   // Esszimmer (Stereopaar)
+    TEST_ASSERT_EQUAL_INT(-1, topology::findGroupByIp(groups, "192.168.178.110"));  // Sub Mini
+    TEST_ASSERT_EQUAL_INT(6, topology::findGroupByIp(groups, "192.168.178.118"));
+}
+
+void test_topology_request_matches_recorded() {
+    TEST_ASSERT_EQUAL_STRING(fixtures::kGetZoneGroupStateRequest, topology::getZoneGroupState().body.c_str());
+}
+
+void test_topology_invisible_coordinator_keeps_room() {
+    // Stereopaar, bei dem der unsichtbare Lautsprecher Koordinator ist
+    const std::string inner =
+        "<ZoneGroupState><ZoneGroups><ZoneGroup Coordinator=\"RINCON_B\">"
+        "<ZoneGroupMember UUID=\"RINCON_A\" Location=\"http://10.0.0.1:1400/x\" ZoneName=\"Esszimmer\"/>"
+        "<ZoneGroupMember UUID=\"RINCON_B\" Location=\"http://10.0.0.2:1400/x\" ZoneName=\"Esszimmer\" Invisible=\"1\"/>"
+        "</ZoneGroup></ZoneGroups></ZoneGroupState>";
+    const std::string body = "<ZoneGroupState>" + xml::escape(inner) + "</ZoneGroupState>";
+    std::vector<ZoneGroup> groups;
+    TEST_ASSERT_TRUE(topology::parseZoneGroupState(body, groups));
+    TEST_ASSERT_EQUAL_size_t(1, groups.size());
+    TEST_ASSERT_EQUAL_STRING("Esszimmer", groups[0].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("10.0.0.2", groups[0].coordinatorIp.c_str());  // Befehle an den Koordinator
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_xml_find_element_ignores_namespace_prefix);
@@ -445,5 +480,8 @@ int main(int, char**) {
     RUN_TEST(test_topology_request);
     RUN_TEST(test_ssdp_request_and_responses);
     RUN_TEST(test_group_volume_requests);
+    RUN_TEST(test_topology_recorded_installation);
+    RUN_TEST(test_topology_request_matches_recorded);
+    RUN_TEST(test_topology_invisible_coordinator_keeps_room);
     return UNITY_END();
 }
