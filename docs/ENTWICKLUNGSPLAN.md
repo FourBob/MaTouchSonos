@@ -253,7 +253,10 @@ wechselt Now Playing und Lautstärke auf diesen Raum. Nach Neustart ist der letz
 Wechsel mit kurzer Überblendung; Platzhalter, wenn es kein Cover gibt.
 
 **Entwicklung**
-- Cover über den Sonos-Proxy laden (`http://<speaker>:1400/getaa?…`) – vermeidet HTTPS auf dem ESP32
+- Cover über den Sonos-Proxy laden (`http://<speaker>:1400/getaa?…`), wo möglich
+- **Erkenntnis aus T3 (Schritt 3):** Bei Spotify Connect (`x-sonos-vli:`) und bei Radio-Senderlogos
+  (TuneIn) liefert Sonos **absolute HTTPS-Adressen** (`https://i.scdn.co/…`). Also HTTPS-Client auf dem
+  ESP32 (mbedTLS, Puffer im PSRAM), ggf. verkleinerte Varianten anfordern
 - JPEG-Dekodierung (JPEGDEC) direkt in PSRAM-Puffer, skaliert auf 480×480, runde Maske
 - Abdunkelung/Verlauf für Lesbarkeit
 - Kleiner Cache (letzte 3 Cover), Laden im Hintergrund – UI bleibt bedienbar

@@ -64,8 +64,15 @@ bool isStreamUri(const std::string& uri) {
 
 /** Sonos setzt bei Radio oft die Stream-URI als dc:title – die ist nicht anzeigbar. */
 bool isUriLike(const std::string& s) {
-    return s.find("://") != std::string::npos || startsWith(s, "x-") || startsWith(s, "aac:") ||
-           startsWith(s, "hls-radio:");
+    if (s.find("://") != std::string::npos || startsWith(s, "x-") || startsWith(s, "aac:") ||
+        startsWith(s, "hls-radio:")) {
+        return true;
+    }
+    // Dateiname mit Parametern, z. B. „stream.aac?aggregator=tunein&cid=…“ (TuneIn):
+    // keine Leerzeichen, aber '?' und '='.
+    bool hasSpace = false;
+    for (char c : s) hasSpace |= std::isspace(static_cast<unsigned char>(c)) != 0;
+    return !hasSpace && s.find('?') != std::string::npos && s.find('=') != std::string::npos;
 }
 
 /** Sonos-interne Platzhalter im streamContent. */
@@ -140,7 +147,11 @@ NowPlaying buildNowPlaying(const PositionInfo& pos, const MediaInfo* media) {
     if (radio) {
         np.kind = SourceKind::Radio;
         std::string station;
-        if (media) station = trim(parseDidl(media->currentUriMetaData).title);
+        if (media) {
+            const TrackMeta source = parseDidl(media->currentUriMetaData);
+            station = source.title;
+            if (np.albumArtUri.empty()) np.albumArtUri = source.albumArtUri;  // Senderlogo
+        }
         if (station.empty() && !isPlaceholder(meta.title)) station = meta.title;
         if (isUriLike(station)) station.clear();
 

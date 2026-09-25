@@ -270,6 +270,49 @@ void test_avtransport_next_previous_seek_requests() {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, avtransport::getMediaInfo().body.find("<InstanceID>0</InstanceID></u:GetMediaInfo>"));
 }
 
+void test_nowplaying_recorded_radio_dlf() {
+    PositionInfo pos;
+    MediaInfo media;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionRadioDlf, pos));
+    TEST_ASSERT_TRUE(parseMediaInfo(fixtures::kMediaRadioDlf, media));
+    const NowPlaying np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::Radio);
+    TEST_ASSERT_EQUAL_STRING("Microsoft verlängert Windows 10 Updates noch um ein Jahr, Kai Rüsberg", np.title.c_str());
+    TEST_ASSERT_EQUAL_STRING("Deutschlandfunk Radio", np.subtitle.c_str());
+    TEST_ASSERT_EQUAL_STRING("https://cdn-profiles.tunein.com/s42828/images/logoq.png?t=1", np.albumArtUri.c_str());
+    TEST_ASSERT_FALSE(np.hasProgress());
+}
+
+void test_nowplaying_recorded_radio_dlf_without_media_hides_stream_filename() {
+    // Regression: dc:title ist hier „stream.aac?aggregator=tunein&…“ – darf nie als Sender erscheinen.
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionRadioDlf, pos));
+    const NowPlaying np = buildNowPlaying(pos, nullptr);
+    TEST_ASSERT_EQUAL_STRING("", np.subtitle.c_str());
+    TEST_ASSERT_EQUAL_STRING("Microsoft verlängert Windows 10 Updates noch um ein Jahr, Kai Rüsberg", np.title.c_str());
+}
+
+void test_nowplaying_recorded_spotify_connect() {
+    PositionInfo pos;
+    MediaInfo media;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionSpotifyConnect, pos));
+    TEST_ASSERT_TRUE(parseMediaInfo(fixtures::kMediaSpotifyConnect, media));
+    const NowPlaying np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::Track);
+    TEST_ASSERT_EQUAL_STRING("Carry Me Back to Old Virginny", np.title.c_str());
+    TEST_ASSERT_EQUAL_STRING("Don Shirley", np.subtitle.c_str());
+    TEST_ASSERT_EQUAL_STRING("The Don Shirley Point Of View", np.album.c_str());
+    TEST_ASSERT_EQUAL_STRING("https://i.scdn.co/image/ab67616d0000b273bdf478d2cbd63f86bed753bd", np.albumArtUri.c_str());
+    TEST_ASSERT_EQUAL_INT(284, np.durationSec);
+    TEST_ASSERT_EQUAL_INT(11, np.positionSec);
+    TEST_ASSERT_TRUE(np.hasProgress());
+}
+
+void test_nowplaying_requests_match_recorded() {
+    TEST_ASSERT_EQUAL_STRING(fixtures::kGetPositionInfoRequest, avtransport::getPositionInfo().body.c_str());
+    TEST_ASSERT_EQUAL_STRING(fixtures::kGetMediaInfoRequest, avtransport::getMediaInfo().body.c_str());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_xml_find_element_ignores_namespace_prefix);
@@ -303,5 +346,9 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_tv_linein_and_empty);
     RUN_TEST(test_nowplaying_rejects_unexpected_response);
     RUN_TEST(test_avtransport_next_previous_seek_requests);
+    RUN_TEST(test_nowplaying_recorded_radio_dlf);
+    RUN_TEST(test_nowplaying_recorded_radio_dlf_without_media_hides_stream_filename);
+    RUN_TEST(test_nowplaying_recorded_spotify_connect);
+    RUN_TEST(test_nowplaying_requests_match_recorded);
     return UNITY_END();
 }

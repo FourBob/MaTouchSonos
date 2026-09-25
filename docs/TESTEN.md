@@ -239,6 +239,8 @@ python3 tools/sonos_probe.py <IP> --save probe-tv nowplaying          # TV/Line-
 - [ ] Nach links wischen: Hinweis „Nächster Titel“, der Titel wechselt, Log `SWIPE links -> Next` und `SONOS Next ok`
 - [ ] Nach rechts wischen: vorheriger Titel (bzw. Sprung an den Anfang des Titels, so macht es Sonos)
 - [ ] Bei Radio: Hinweis „Bei dieser Quelle nicht möglich“, keine Fehlermeldung
+- [ ] **Spotify Connect** (Musik aus der Spotify-App auf den Speaker geschickt): Funktionieren Wischen und
+      Play/Pause auch dann? Das ist bei dieser Betriebsart noch ungeprüft, bitte Log mitschicken
 - [ ] Ein normales Antippen (ohne Wischen) löst nichts aus
 
 **Robustheit**

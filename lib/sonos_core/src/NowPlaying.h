@@ -71,8 +71,11 @@ TrackMeta parseDidl(const std::string& didl);
  * Regeln:
  *  - TV (x-sonos-htastream:) → "TV", Line-In (x-rincon-stream:) → "Line-In"
  *  - Radio (Länge 0 bzw. Stream-URI): Titel = r:streamContent (falls sinnvoll), sonst
- *    Sendername; Untertitel = Sendername. Sonos-Platzhalter wie „ZPSTR_CONNECTING“
- *    werden zu „Verbinde …“.
+ *    Sendername; Untertitel = Sendername; Cover = Senderlogo aus GetMediaInfo.
+ *    Sonos-Platzhalter wie „ZPSTR_CONNECTING“ werden zu „Verbinde …“, Stream-Adressen
+ *    (die Sonos bei Radio oft als dc:title schickt) werden nie angezeigt.
+ *  - Spotify Connect (x-sonos-vli:) verhält sich wie ein normaler Titel; das Cover ist
+ *    dann eine absolute HTTPS-Adresse.
  *  - Titel: Titel/Interpret/Album aus DIDL
  *  - Leere Warteschlange → SourceKind::None
  */
