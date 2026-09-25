@@ -1,5 +1,6 @@
 #include "AVTransport.h"
 
+#include "NowPlaying.h"
 #include "Xml.h"
 
 namespace sonos {
@@ -19,6 +20,27 @@ SoapRequest stop() {
 
 SoapRequest getTransportInfo() {
     return buildSoapRequest(services::AVTransport, "GetTransportInfo", {{"InstanceID", "0"}});
+}
+
+SoapRequest getPositionInfo() {
+    return buildSoapRequest(services::AVTransport, "GetPositionInfo", {{"InstanceID", "0"}});
+}
+
+SoapRequest getMediaInfo() {
+    return buildSoapRequest(services::AVTransport, "GetMediaInfo", {{"InstanceID", "0"}});
+}
+
+SoapRequest next() {
+    return buildSoapRequest(services::AVTransport, "Next", {{"InstanceID", "0"}});
+}
+
+SoapRequest previous() {
+    return buildSoapRequest(services::AVTransport, "Previous", {{"InstanceID", "0"}});
+}
+
+SoapRequest seek(int positionSec) {
+    return buildSoapRequest(services::AVTransport, "Seek",
+                            {{"InstanceID", "0"}, {"Unit", "REL_TIME"}, {"Target", time::toUpnp(positionSec)}});
 }
 
 TransportState parseTransportState(const std::string& text) {

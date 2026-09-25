@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0 und 1 ✅ abgeschlossen. Schritt 2 umgesetzt, wartet auf den Geräte-Test (T3 + T4).
+> **Stand:** Schritt 0–2 ✅ abgeschlossen. Schritt 3 umgesetzt, wartet auf den Geräte-Test (T3 + T4).
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -134,7 +134,7 @@ Speakers als Bogen gezeigt. Drehen ändert die Lautstärke hörbar; die Zahl ste
 
 ---
 
-### Schritt 2 – Play/Pause mit Statusanzeige 🧪
+### Schritt 2 – Play/Pause mit Statusanzeige ✅
 
 **Ziel:** Kurz drücken startet/pausiert; das Display zeigt den echten Zustand.
 
@@ -160,7 +160,7 @@ Speakers als Bogen gezeigt. Drehen ändert die Lautstärke hörbar; die Zahl ste
 
 ---
 
-### Schritt 3 – Now Playing (Text + Fortschrittsbogen) und Titel wechseln
+### Schritt 3 – Now Playing (Text + Fortschrittsbogen) und Titel wechseln 🧪
 
 **Ziel:** Man sieht, was läuft, und kann per Wischen Titel wechseln.
 

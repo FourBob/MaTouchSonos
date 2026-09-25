@@ -10,6 +10,8 @@
 #include "Soap.h"
 #include "Xml.h"
 #include "fixtures.h"
+#include "fixtures_nowplaying.h"
+#include "NowPlaying.h"
 
 using namespace sonos;
 
@@ -171,6 +173,103 @@ void test_avtransport_parse_rejects_fault() {
     TEST_ASSERT_FALSE(avtransport::parseTransportInfo(fixtures::kFault402, st));
 }
 
+// --- Now Playing ---------------------------------------------------------------
+
+void test_time_parse_and_format() {
+    TEST_ASSERT_EQUAL_INT(225, time::parseDuration("0:03:45"));
+    TEST_ASSERT_EQUAL_INT(3723, time::parseDuration("01:02:03"));
+    TEST_ASSERT_EQUAL_INT(62, time::parseDuration("0:01:02.000"));
+    TEST_ASSERT_EQUAL_INT(-1, time::parseDuration("NOT_IMPLEMENTED"));
+    TEST_ASSERT_EQUAL_INT(-1, time::parseDuration(""));
+    TEST_ASSERT_EQUAL_INT(-1, time::parseDuration("0:61:00"));
+    TEST_ASSERT_EQUAL_STRING("3:45", time::format(225).c_str());
+    TEST_ASSERT_EQUAL_STRING("0:07", time::format(7).c_str());
+    TEST_ASSERT_EQUAL_STRING("1:02:03", time::format(3723).c_str());
+    TEST_ASSERT_EQUAL_STRING("0:01:02", time::toUpnp(62).c_str());
+}
+
+void test_nowplaying_spotify_track() {
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionSpotify, pos));
+    TEST_ASSERT_EQUAL_INT(225, pos.durationSec);
+    TEST_ASSERT_EQUAL_INT(62, pos.positionSec);
+    TEST_ASSERT_EQUAL_STRING("x-sonos-spotify:spotify%3atrack%3a123?sid=12&flags=8224&sn=1", pos.trackUri.c_str());
+
+    const NowPlaying np = buildNowPlaying(pos, nullptr);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::Track);
+    TEST_ASSERT_EQUAL_STRING("Zu spät & zu laut", np.title.c_str());  // doppelt kodiertes & korrekt
+    TEST_ASSERT_EQUAL_STRING("Die Ärzte", np.subtitle.c_str());
+    TEST_ASSERT_EQUAL_STRING("Debil", np.album.c_str());
+    TEST_ASSERT_EQUAL_STRING("/getaa?s=1&u=x-sonos-spotify%3aspotify%253atrack%253a123", np.albumArtUri.c_str());
+    TEST_ASSERT_TRUE(np.hasProgress());
+    TEST_ASSERT_TRUE(np.canSkip());
+}
+
+void test_nowplaying_radio_with_station_name() {
+    PositionInfo pos;
+    MediaInfo media;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionRadio, pos));
+    TEST_ASSERT_TRUE(parseMediaInfo(fixtures::kMediaRadio, media));
+    const NowPlaying np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::Radio);
+    TEST_ASSERT_EQUAL_STRING("Coldplay - Yellow", np.title.c_str());
+    TEST_ASSERT_EQUAL_STRING("1LIVE", np.subtitle.c_str());
+    TEST_ASSERT_FALSE(np.hasProgress());
+    TEST_ASSERT_FALSE(np.canSkip());
+}
+
+void test_nowplaying_radio_without_media_hides_uri_title() {
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionRadio, pos));
+    const NowPlaying np = buildNowPlaying(pos, nullptr);
+    TEST_ASSERT_EQUAL_STRING("Coldplay - Yellow", np.title.c_str());
+    TEST_ASSERT_EQUAL_STRING("", np.subtitle.c_str());  // keine Stream-URI als Sendername
+}
+
+void test_nowplaying_radio_connecting_placeholder() {
+    PositionInfo pos;
+    MediaInfo media;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionRadioConnecting, pos));
+    TEST_ASSERT_TRUE(parseMediaInfo(fixtures::kMediaRadio, media));
+    const NowPlaying np = buildNowPlaying(pos, &media);
+    TEST_ASSERT_EQUAL_STRING("Verbinde …", np.title.c_str());
+    TEST_ASSERT_EQUAL_STRING("1LIVE", np.subtitle.c_str());
+}
+
+void test_nowplaying_tv_linein_and_empty() {
+    PositionInfo pos;
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionTv, pos));
+    NowPlaying np = buildNowPlaying(pos, nullptr);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::TV);
+    TEST_ASSERT_EQUAL_STRING("TV", np.title.c_str());
+    TEST_ASSERT_FALSE(np.canSkip());
+
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionLineIn, pos));
+    np = buildNowPlaying(pos, nullptr);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::LineIn);
+    TEST_ASSERT_EQUAL_STRING("Line-In", np.title.c_str());
+
+    TEST_ASSERT_TRUE(parsePositionInfo(fixtures::kPositionEmpty, pos));
+    np = buildNowPlaying(pos, nullptr);
+    TEST_ASSERT_TRUE(np.kind == SourceKind::None);
+}
+
+void test_nowplaying_rejects_unexpected_response() {
+    PositionInfo pos;
+    TEST_ASSERT_FALSE(parsePositionInfo(fixtures::kFault402, pos));
+    MediaInfo media;
+    TEST_ASSERT_FALSE(parseMediaInfo(fixtures::kFault402, media));
+}
+
+void test_avtransport_next_previous_seek_requests() {
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#Next\"", avtransport::next().soapAction.c_str());
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#Previous\"", avtransport::previous().soapAction.c_str());
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+        avtransport::seek(125).body.find("<InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>0:02:05</Target></u:Seek>"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, avtransport::getPositionInfo().body.find("<InstanceID>0</InstanceID></u:GetPositionInfo>"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, avtransport::getMediaInfo().body.find("<InstanceID>0</InstanceID></u:GetMediaInfo>"));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_xml_find_element_ignores_namespace_prefix);
@@ -196,5 +295,13 @@ int main(int, char**) {
     RUN_TEST(test_avtransport_requests_match_recorded);
     RUN_TEST(test_avtransport_play_pause_responses_are_ok);
     RUN_TEST(test_avtransport_parse_rejects_fault);
+    RUN_TEST(test_time_parse_and_format);
+    RUN_TEST(test_nowplaying_spotify_track);
+    RUN_TEST(test_nowplaying_radio_with_station_name);
+    RUN_TEST(test_nowplaying_radio_without_media_hides_uri_title);
+    RUN_TEST(test_nowplaying_radio_connecting_placeholder);
+    RUN_TEST(test_nowplaying_tv_linein_and_empty);
+    RUN_TEST(test_nowplaying_rejects_unexpected_response);
+    RUN_TEST(test_avtransport_next_previous_seek_requests);
     return UNITY_END();
 }

@@ -15,6 +15,8 @@ Beispiele:
   python3 tools/sonos_probe.py 192.168.1.50 transport info
   python3 tools/sonos_probe.py 192.168.1.50 transport pause
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out transport info
+  python3 tools/sonos_probe.py 192.168.1.50 nowplaying          # was läuft gerade?
+  python3 tools/sonos_probe.py 192.168.1.50 --save probe-out nowplaying
 """
 
 from __future__ import annotations  # Typangaben auch mit Python 3.8/3.9 (macOS-Standard)
@@ -131,6 +133,8 @@ def cmd_transport(ip: str, args) -> int:
         "play": ("Play", [("InstanceID", "0"), ("Speed", "1")]),
         "pause": ("Pause", [("InstanceID", "0")]),
         "stop": ("Stop", [("InstanceID", "0")]),
+        "next": ("Next", [("InstanceID", "0")]),
+        "previous": ("Previous", [("InstanceID", "0")]),
     }
     action, soap_args = actions[args.op]
     req, status, resp, ms = soap(ip, "AVTransport", action, soap_args)
@@ -140,10 +144,36 @@ def cmd_transport(ip: str, args) -> int:
     elif not ok:
         code = element(resp, "errorCode")
         hints = {"701": "Nichts zum Abspielen bzw. Aktion im aktuellen Zustand nicht möglich",
+                 "711": "Kein weiterer Titel in der Warteschlange",
                  "800": "Speaker ist Mitglied einer Gruppe – Befehl an den Gruppen-Koordinator senden"}
         if code in hints:
             print(f"  Hinweis: {hints[code]}")
     return 0 if ok else 1
+
+
+def cmd_nowplaying(ip: str, args) -> int:
+    """GetPositionInfo + GetMediaInfo – die Rohdaten für den Now-Playing-Bildschirm."""
+    req, status, pos, ms = soap(ip, "AVTransport", "GetPositionInfo", [("InstanceID", "0")])
+    if not report("GetPositionInfo", req, status, pos, ms, args.save):
+        return 1
+    req, status, media, ms = soap(ip, "AVTransport", "GetMediaInfo", [("InstanceID", "0")])
+    if not report("GetMediaInfo", req, status, media, ms, args.save):
+        return 1
+
+    def didl_field(escaped_didl: str | None, name: str) -> str:
+        if not escaped_didl or escaped_didl == "NOT_IMPLEMENTED":
+            return ""
+        return html.unescape(element(html.unescape(escaped_didl), name) or "")
+
+    meta = element(pos, "TrackMetaData")
+    print(f"  Track-URI:  {html.unescape(element(pos, 'TrackURI') or '')}")
+    print(f"  Titel:      {didl_field(meta, 'title')}")
+    print(f"  Interpret:  {didl_field(meta, 'creator')}")
+    print(f"  Album:      {didl_field(meta, 'album')}")
+    print(f"  Stream:     {didl_field(meta, 'streamContent')}")
+    print(f"  Position:   {element(pos, 'RelTime')} / {element(pos, 'TrackDuration')}")
+    print(f"  Quelle:     {didl_field(element(media, 'CurrentURIMetaData'), 'title')}")
+    return 0
 
 
 def main() -> int:
@@ -161,11 +191,14 @@ def main() -> int:
     vset.add_argument("value", type=int, help="0..100")
 
     tr = sub.add_parser("transport", help="Wiedergabe: Zustand lesen, Play, Pause, Stop")
-    tr.add_argument("op", choices=["info", "play", "pause", "stop"])
+    tr.add_argument("op", choices=["info", "play", "pause", "stop", "next", "previous"])
+
+    sub.add_parser("nowplaying", help="Was läuft gerade? (GetPositionInfo + GetMediaInfo)")
 
     args = p.parse_args()
     try:
-        return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport}[args.command](args.ip, args)
+        return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport,
+                "nowplaying": cmd_nowplaying}[args.command](args.ip, args)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         print(f"Speaker unter {args.ip}:{PORT} nicht erreichbar: {e}")
         return 1

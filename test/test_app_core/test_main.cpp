@@ -8,12 +8,14 @@
 #include "ButtonDetector.h"
 #include "DetentTracker.h"
 #include "PlaybackController.h"
+#include "ProgressTracker.h"
 #include "VolumeController.h"
 
 using app::ButtonDetector;
 using app::ButtonEvent;
 using app::DetentTracker;
 using app::PlaybackController;
+using app::ProgressTracker;
 using app::PlayState;
 using app::TransportCommand;
 using app::VolumeController;
@@ -295,6 +297,73 @@ void test_playback_invalidate() {
     TEST_ASSERT_FALSE(pc.toggle(10, cmd));
 }
 
+// --- ProgressTracker ----------------------------------------------------------
+
+void test_progress_unknown_until_remote_value() {
+    ProgressTracker p;
+    TEST_ASSERT_FALSE(p.known());
+    TEST_ASSERT_EQUAL_INT(-1, p.positionSec(1000));
+    TEST_ASSERT_EQUAL_INT(0, p.permille(1000));
+}
+
+void test_progress_interpolates_while_playing() {
+    ProgressTracker p;
+    p.onRemote(62, 225, true, 10000);
+    TEST_ASSERT_EQUAL_INT(62, p.positionSec(10000));
+    TEST_ASSERT_EQUAL_INT(63, p.positionSec(11000));
+    TEST_ASSERT_EQUAL_INT(65, p.positionSec(13400));
+    TEST_ASSERT_EQUAL_INT(288, p.permille(13000));  // 65/225
+}
+
+void test_progress_frozen_while_paused() {
+    ProgressTracker p;
+    p.onRemote(62, 225, false, 10000);
+    TEST_ASSERT_EQUAL_INT(62, p.positionSec(20000));
+}
+
+void test_progress_pause_and_resume_locally() {
+    ProgressTracker p;
+    p.onRemote(10, 100, true, 0);
+    p.setPlaying(false, 5000);                   // Pause bei 15 s
+    TEST_ASSERT_EQUAL_INT(15, p.positionSec(9000));
+    p.setPlaying(true, 9000);                    // weiter
+    TEST_ASSERT_EQUAL_INT(17, p.positionSec(11000));
+}
+
+void test_progress_clamped_to_duration() {
+    ProgressTracker p;
+    p.onRemote(220, 225, true, 0);
+    TEST_ASSERT_EQUAL_INT(225, p.positionSec(60000));
+    TEST_ASSERT_EQUAL_INT(1000, p.permille(60000));
+}
+
+void test_progress_remote_value_corrects() {
+    ProgressTracker p;
+    p.onRemote(10, 100, true, 0);
+    p.onRemote(30, 100, true, 1500);             // z. B. in der App gespult
+    TEST_ASSERT_EQUAL_INT(30, p.positionSec(1500));
+}
+
+void test_progress_no_duration_means_unknown() {
+    ProgressTracker p;
+    p.onRemote(754, 0, true, 0);                 // Radio
+    TEST_ASSERT_FALSE(p.known());
+    TEST_ASSERT_EQUAL_INT(0, p.permille(1000));
+}
+
+void test_progress_jump_to() {
+    ProgressTracker p;
+    p.onRemote(10, 100, true, 0);
+    p.jumpTo(50, 1000);
+    TEST_ASSERT_EQUAL_INT(51, p.positionSec(2000));
+}
+
+void test_progress_millis_wraparound() {
+    ProgressTracker p;
+    p.onRemote(10, 100, true, 0xFFFFFC18u);      // 1 s vor dem Überlauf
+    TEST_ASSERT_EQUAL_INT(12, p.positionSec(1000u));
+}
+
 // --- ButtonDetector ---------------------------------------------------------
 
 // Hilfsfunktion: hält einen Pegel über eine Zeitspanne und sammelt Ereignisse.
@@ -388,6 +457,15 @@ int main(int, char**) {
     RUN_TEST(test_playback_follows_app_changes_when_idle);
     RUN_TEST(test_playback_command_failed_reverts);
     RUN_TEST(test_playback_invalidate);
+    RUN_TEST(test_progress_unknown_until_remote_value);
+    RUN_TEST(test_progress_interpolates_while_playing);
+    RUN_TEST(test_progress_frozen_while_paused);
+    RUN_TEST(test_progress_pause_and_resume_locally);
+    RUN_TEST(test_progress_clamped_to_duration);
+    RUN_TEST(test_progress_remote_value_corrects);
+    RUN_TEST(test_progress_no_duration_means_unknown);
+    RUN_TEST(test_progress_jump_to);
+    RUN_TEST(test_progress_millis_wraparound);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

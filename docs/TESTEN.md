@@ -175,7 +175,7 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 
 ---
 
-## Checkliste Schritt 2 – Play/Pause und Abgleich mit der Sonos-App
+## Checkliste Schritt 2 – Play/Pause und Abgleich mit der Sonos-App ✅
 
 **T3 zuerst** (am Mac, Speaker-IP wie in `secrets.h`):
 ```bash
@@ -203,3 +203,45 @@ python3 tools/sonos_probe.py <IP> --save probe-out transport play
 - [ ] Speaker in der Sonos-App zu einer Gruppe hinzufügen, in der ein **anderer** Speaker führt, dann drücken:
       rote Meldung „Speaker ist Teil einer Gruppe …“ für ca. 4 s, Anzeige springt auf den alten Zustand zurück
 - [ ] 10 Minuten laufen lassen: `heap_frei` stabil, kein Neustart
+
+---
+
+## Checkliste Schritt 3 – Now Playing und Titel wechseln
+
+**T3 zuerst:** Für jede Quelle, die du nutzt, einmal in der Sonos-App starten und aufzeichnen.
+Die Ordnernamen helfen mir beim Zuordnen:
+```bash
+python3 tools/sonos_probe.py <IP> --save probe-spotify nowplaying     # Musikdienst (Spotify o. Ä.)
+python3 tools/sonos_probe.py <IP> --save probe-radio nowplaying       # Radiosender
+python3 tools/sonos_probe.py <IP> --save probe-bibliothek nowplaying  # eigene Musik/NAS (falls genutzt)
+python3 tools/sonos_probe.py <IP> --save probe-tv nowplaying          # TV/Line-In (falls vorhanden)
+```
+- [ ] Die Ausgabe zeigt jeweils sinnvolle Werte für Titel, Interpret und Position
+- [ ] Die `probe-*`-Ordner mitschicken. Daraus werden echte Testdaten für alle Quellen.
+
+**Anzeige** (`pio run -e matouch -t upload`)
+- [ ] Titel, Interpret und Album stimmen mit der Sonos-App überein
+- [ ] Umlaute und Sonderzeichen (&, ’, é …) werden korrekt dargestellt
+- [ ] Lange Titel laufen als Laufschrift durch, nichts wird vom runden Rand abgeschnitten
+- [ ] Der Fortschrittsring außen läuft flüssig, die Zeit (z. B. `1:02 / 3:45`) zählt jede Sekunde hoch
+- [ ] Bei Pause bleiben Ring und Zeit stehen, der Titel wird grau
+- [ ] Nach einem Titelwechsel springt der Ring auf den Anfang
+- [ ] In der Sonos-App im Titel spulen: Ring und Zeit folgen innerhalb von ca. 2 s
+- [ ] **Radio:** Sendername und laufender Titel werden angezeigt, kein Ring, keine Zeit
+- [ ] **TV/Line-In** (falls vorhanden): „TV“ bzw. „Line-In“
+- [ ] **Leere Warteschlange:** „Nichts in der Warteschlange“
+
+**Lautstärke-Einblendung**
+- [ ] Beim Drehen erscheinen Lautstärkebogen und Zahl und verschwinden 2 s nach dem letzten Klick
+- [ ] Lautstärke in der Sonos-App ändern: Die Einblendung erscheint kurz mit dem neuen Wert
+
+**Wischen**
+- [ ] Nach links wischen: Hinweis „Nächster Titel“, der Titel wechselt, Log `SWIPE links -> Next` und `SONOS Next ok`
+- [ ] Nach rechts wischen: vorheriger Titel (bzw. Sprung an den Anfang des Titels, so macht es Sonos)
+- [ ] Bei Radio: Hinweis „Bei dieser Quelle nicht möglich“, keine Fehlermeldung
+- [ ] Ein normales Antippen (ohne Wischen) löst nichts aus
+
+**Robustheit**
+- [ ] 15 Minuten laufen lassen: Im Log dürfen vereinzelt `SONOS … FEHLER (1/3)` oder `Aussetzer` stehen,
+      aber auf dem Display erscheint **keine** Fehlermeldung, solange der Speaker erreichbar ist
+- [ ] `heap_frei` bleibt stabil, kein Neustart

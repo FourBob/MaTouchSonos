@@ -25,6 +25,11 @@ SoapRequest play();
 SoapRequest pause();
 SoapRequest stop();
 SoapRequest getTransportInfo();
+SoapRequest getPositionInfo();  ///< Titel-Metadaten, Länge, Position (Auswertung: NowPlaying.h)
+SoapRequest getMediaInfo();     ///< Quelle, z. B. Sendername bei Radio (Auswertung: NowPlaying.h)
+SoapRequest next();
+SoapRequest previous();
+SoapRequest seek(int positionSec);  ///< Springt im aktuellen Titel (Unit REL_TIME)
 
 /** Liest <CurrentTransportState>. @return false, wenn nicht vorhanden. */
 bool parseTransportInfo(const std::string& body, TransportState& state);

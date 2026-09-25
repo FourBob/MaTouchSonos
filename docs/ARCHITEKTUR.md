@@ -16,7 +16,7 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ src/            main.cpp → RemoteApp / HwTestApp          │
-│                 MainScreen, TestScreen, fonts/            │
+│                 NowPlayingScreen, TestScreen, fonts/      │
 ├──────────────────────────────────────────────────────────┤
 │ (lib/ui/        Bildschirme wandern hierher, sobald es    │
 │                 mehrere gibt – ab Schritt 3)              │
@@ -26,7 +26,8 @@
 │                               │  und DIDL-Parser,        │
 │  ButtonDetector               │  RenderingControl        │
 │  VolumeController             │  AVTransport             │
-│  PlaybackController           │  (Topologie ab Schritt 5)│
+│  PlaybackController           │  NowPlaying (DIDL-Lite)  │
+│  ProgressTracker              │  (Topologie ab Schritt 5)│
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
 │ lib/net/        WLAN, HTTP, SSDP (ab Schritt 1/5)         │
@@ -72,13 +73,16 @@ Touch ◀──I2C-Polling── LVGL-Eingabetreiber
 Kern 1: loop()                                   Kern 0: SonosLink-Task
 ─────────────────                                ─────────────────────
 Drehring → VolumeController                      WLAN aufbauen / überwachen
-   │  (Anzeige sofort, Drossel 150 ms)           alle 1,5 s: GetTransportInfo + GetVolume
+   │  (Anzeige sofort, Drossel 150 ms)           alle 1,5 s: TransportInfo, PositionInfo, Volume
    └─ setVolume(v) ──▶ [Queue, Länge 1] ──▶ SetVolume an Speaker (HTTP, Port 1400)
                         (neuester Wert gewinnt)
 Taste → PlaybackController
    │  (Anzeige sofort)
    └─ transport(cmd) ─▶ [Queue, Länge 4] ──▶ Play / Pause (Pause abgelehnt → Stop)
+Wischen ── transport(Next/Previous) ───────▶ Next / Previous
 Anzeige ◀── pollEvent() ◀── [Event-Queue] ◀── WLAN-/Speaker-Zustand, Lautstärke, Fehler
+Anzeige ◀── takeNowPlaying() ◀── [Momentaufnahme, Mutex] ◀── GetPositionInfo (+ GetMediaInfo
+                                                              bei Quellenwechsel)
 ```
 
 - LVGL wird nur von Kern 1 aus angefasst.
@@ -88,7 +92,16 @@ Anzeige ◀── pollEvent() ◀── [Event-Queue] ◀── WLAN-/Speaker-Zu
 - **Konfliktregeln** (beide in `app_core`, getestet): Werte vom Speaker überschreiben die Anzeige
   nicht, solange der Nutzer gerade dreht (1 s) bzw. ein Play/Pause noch unbestätigt ist (2,5 s).
   Danach gewinnt der Speaker. So folgen Änderungen aus der Sonos-App, ohne dass die Anzeige springt.
-- Nach jedem Fehler gilt die Lautstärke als unbekannt (Anzeige „–“, Drehen gesperrt), bis
+- **Titelinfos** (Titel, Interpret, Album, Cover-URL) sind zu groß für die Event-Queue. Die Task
+  legt sie als Momentaufnahme mit fester Puffergröße ab (Mutex-geschützt, Versionszähler), die UI
+  holt sie sich ab, wenn sich die Version geändert hat.
+- **Fortschritt:** Zwischen den Abfragen zählt `ProgressTracker` lokal weiter, damit der Ring
+  flüssig läuft. Neu gezeichnet wird nur einmal pro Sekunde.
+- **Aussetzer-Toleranz** (seit Schritt 3, aus dem Geräte-Test gelernt): Bei schwachem WLAN
+  antwortet der Speaker gelegentlich nicht innerhalb des Timeouts. Einzelne Aussetzer werden
+  still nach 0,5 s wiederholt, Befehle sofort ein zweites Mal gesendet. Erst nach 3 Fehlschlägen
+  in Folge gilt der Speaker als nicht erreichbar.
+- Nach wiederholten Fehlern gilt die Lautstärke als unbekannt (Anzeige „–“, Drehen gesperrt), bis
   GetVolume wieder eine Antwort liefert. So zeigt das Display nie einen Wert an, den der Speaker nicht hat.
 
 ## Designentscheidungen

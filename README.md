@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 2 von 9: Lautstärke per Drehring und Play/Pause per Taste an einem Sonos-Speaker.
+> **Projektstand:** Schritt 3 von 9: Now Playing mit Titel und Fortschritt, Lautstärke, Play/Pause und Titelwechsel per Wischen.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -34,8 +34,8 @@ Außen läuft der Fortschrittsbogen.
 |---|---|---|
 | 0 | Hardware läuft: Display, Touch, Drehring, Taste | ✅ getestet |
 | 1 | Lautstärke eines Speakers mit dem Ring regeln | ✅ getestet |
-| 2 | Play/Pause mit Statusanzeige | 🧪 wartet auf Geräte-Test |
-| 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ⏳ |
+| 2 | Play/Pause mit Statusanzeige | ✅ getestet |
+| 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | 🧪 wartet auf Geräte-Test |
 | 4 | Ringmenü und Scrubbing | ⏳ |
 | 5 | Räume automatisch finden und wählen | ⏳ |
 | 6 | Albumcover | ⏳ |
@@ -154,6 +154,7 @@ pio test -e native                                  # Unit-Tests auf dem PC, kei
 pio run  -e matouch                                 # Firmware bauen
 python3 tools/sonos_probe.py <Speaker-IP> volume get  # Sonos-Befehl vom PC aus testen
 python3 tools/sonos_probe.py <Speaker-IP> transport info
+python3 tools/sonos_probe.py <Speaker-IP> nowplaying
 ```
 
 Das Projekt wird auf vier Ebenen getestet: Unit-Tests, CI-Build, Protokoll-Tests gegen die
@@ -175,7 +176,7 @@ src/
   main.cpp              Einstieg, wählt die Betriebsart
   RemoteApp.cpp         Fernbedienung
   HwTestApp.cpp         Hardware-Test (Schritt 0)
-  MainScreen.*          Hauptbildschirm (Lautstärke, Wiedergabezustand)
+  NowPlayingScreen.*    Now Playing mit Lautstärke-Einblendung
   TestScreen.*          Hardware-Testbildschirm
   fonts/                Schrift Inter mit Umlauten (erzeugt mit tools/gen_fonts.sh)
 test/
@@ -204,6 +205,7 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 | Anzeige „include/secrets.h ausfüllen“ | Die Datei enthält noch die Platzhalter `MeinWLAN` usw. |
 | Bleibt bei „WLAN verbinden …“ | SSID/Passwort prüfen. Nur 2,4 GHz wird unterstützt. |
 | „Speaker ist Teil einer Gruppe“ | Play/Pause funktioniert nur am Gruppen-Koordinator. Bis Schritt 5 dessen IP in `secrets.h` eintragen, oder den Speaker in der Sonos-App aus der Gruppe nehmen. |
+| Wischen wechselt den Titel nicht | Bei Radio, TV und Line-In gibt es keinen nächsten Titel (Hinweis „Bei dieser Quelle nicht möglich“). Sonst: zügig über mindestens ein Drittel des Displays wischen. |
 | „Nichts zum Abspielen“ | Die Warteschlange des Speakers ist leer. Erst in der Sonos-App etwas starten. Ab Schritt 7 geht das mit Favoriten direkt am Gerät. |
 | „Speaker nicht erreichbar“ | Speaker-IP prüfen: `python3 tools/sonos_probe.py <IP> info` muss den Raumnamen zeigen. |
 | Farben vertauscht (Rot ↔ Blau) | Die drei Farbbalken oben auf dem Testbild prüfen und das Ergebnis melden. Die Pins in `board_config.h` werden dann angepasst. |
