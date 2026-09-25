@@ -39,6 +39,8 @@ jobs:
       - name: Platzhalter für WLAN-Zugangsdaten anlegen
         run: cp -n include/secrets.example.h include/secrets.h
       - run: pio run -e matouch
+      - name: Hardware-Test-Firmware bauen
+        run: pio run -e matouch_hwtest
       - name: Speicherbedarf
         run: pio run -e matouch -t size | tail -n 20
       - name: Firmware-Dateien sammeln

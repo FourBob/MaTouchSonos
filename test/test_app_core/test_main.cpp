@@ -8,11 +8,13 @@
 #include "ButtonDetector.h"
 #include "QuadratureDecoder.h"
 #include "RotaryDetentDecoder.h"
+#include "VolumeController.h"
 
 using app::ButtonDetector;
 using app::ButtonEvent;
 using app::QuadratureDecoder;
 using app::RotaryDetentDecoder;
+using app::VolumeController;
 
 void setUp() {}
 void tearDown() {}
@@ -163,6 +165,114 @@ void test_detent_last_step_for_diagnostics() {
     TEST_ASSERT_EQUAL_INT(0, dec.lastStep());
 }
 
+// --- VolumeController ----------------------------------------------------------
+
+void test_volume_ignores_input_until_speaker_value_known() {
+    VolumeController vc;
+    TEST_ASSERT_FALSE(vc.onUserDetents(3, 1000));
+    int out;
+    TEST_ASSERT_FALSE(vc.takeValueToSend(1000, out));
+    TEST_ASSERT_TRUE(vc.onRemoteVolume(20, 1000));
+    TEST_ASSERT_EQUAL_INT(20, vc.value());
+    TEST_ASSERT_FALSE(vc.takeValueToSend(1000, out));  // nichts zu senden
+}
+
+void test_volume_slow_turn_one_step_per_detent() {
+    VolumeController vc;
+    vc.onRemoteVolume(20, 0);
+    vc.onUserDetents(+1, 1000);
+    vc.onUserDetents(+1, 1200);
+    vc.onUserDetents(-1, 1400);
+    TEST_ASSERT_EQUAL_INT(21, vc.value());
+}
+
+void test_volume_is_sent_immediately_then_throttled_latest_wins() {
+    VolumeController vc;
+    vc.onRemoteVolume(20, 0);
+    int out = -1;
+
+    vc.onUserDetents(+1, 1000);
+    TEST_ASSERT_TRUE(vc.takeValueToSend(1000, out));
+    TEST_ASSERT_EQUAL_INT(21, out);
+
+    // Weitere Rastungen innerhalb der Drossel: nichts senden ...
+    vc.onUserDetents(+1, 1100);
+    vc.onUserDetents(+1, 1200);
+    TEST_ASSERT_FALSE(vc.takeValueToSend(1120, out));
+    // ... nach Ablauf genau einmal den neuesten Wert.
+    TEST_ASSERT_TRUE(vc.takeValueToSend(1200, out));
+    TEST_ASSERT_EQUAL_INT(23, out);
+    TEST_ASSERT_FALSE(vc.takeValueToSend(1500, out));
+}
+
+void test_volume_many_fast_events_send_few_messages() {
+    VolumeController vc;
+    vc.onRemoteVolume(10, 0);
+    int sends = 0, out = 0;
+    for (uint32_t t = 1000; t < 2000; t += 5) {  // Hauptschleife alle 5 ms
+        if (t % 40 == 0) vc.onUserDetents(+1, t);   // eine Rastung alle 40 ms
+        if (vc.takeValueToSend(t, out)) ++sends;
+    }
+    for (uint32_t t = 2000; t < 2300; t += 5) {
+        if (vc.takeValueToSend(t, out)) ++sends;
+    }
+    TEST_ASSERT_LESS_OR_EQUAL_INT(8, sends);       // 1 s / 150 ms + letzter Wert
+    TEST_ASSERT_EQUAL_INT(vc.value(), out);        // der letzte gesendete ist der Endwert
+}
+
+void test_volume_acceleration() {
+    VolumeController vc;
+    vc.onRemoteVolume(10, 0);
+    vc.onUserDetents(+1, 1000);  // erste Rastung: 1
+    vc.onUserDetents(+1, 1040);  // 40 ms: 2
+    vc.onUserDetents(+1, 1050);  // 10 ms: 4
+    TEST_ASSERT_EQUAL_INT(17, vc.value());
+    vc.onUserDetents(+1, 2000);  // wieder langsam: 1
+    TEST_ASSERT_EQUAL_INT(18, vc.value());
+}
+
+void test_volume_is_clamped_to_0_and_100() {
+    VolumeController vc;
+    vc.onRemoteVolume(98, 0);
+    vc.onUserDetents(+5, 1000);
+    TEST_ASSERT_EQUAL_INT(100, vc.value());
+    TEST_ASSERT_FALSE(vc.onUserDetents(+1, 2000));  // keine Änderung mehr
+    vc.onUserDetents(-200, 3000);
+    TEST_ASSERT_EQUAL_INT(0, vc.value());
+}
+
+void test_volume_remote_value_ignored_while_user_turns() {
+    VolumeController vc;
+    vc.onRemoteVolume(20, 0);
+    int out;
+    vc.onUserDetents(+1, 1000);
+    vc.takeValueToSend(1000, out);
+    // Speaker meldet (veraltet) 20, während der Nutzer gerade dreht -> ignorieren
+    TEST_ASSERT_FALSE(vc.onRemoteVolume(20, 1300));
+    TEST_ASSERT_EQUAL_INT(21, vc.value());
+    // Nach der Ruhezeit wird ein neuer Wert (z. B. aus der Sonos-App) übernommen
+    TEST_ASSERT_TRUE(vc.onRemoteVolume(35, 2100));
+    TEST_ASSERT_EQUAL_INT(35, vc.value());
+}
+
+void test_volume_remote_value_ignored_while_send_pending() {
+    VolumeController vc;
+    vc.onRemoteVolume(20, 0);
+    vc.onUserDetents(+1, 1000);  // noch nicht gesendet
+    TEST_ASSERT_FALSE(vc.onRemoteVolume(30, 5000));
+    TEST_ASSERT_EQUAL_INT(21, vc.value());
+}
+
+void test_volume_invalidate_blocks_input_until_new_value() {
+    VolumeController vc;
+    vc.onRemoteVolume(20, 0);
+    vc.invalidate();
+    TEST_ASSERT_FALSE(vc.hasValue());
+    TEST_ASSERT_FALSE(vc.onUserDetents(+1, 1000));
+    TEST_ASSERT_TRUE(vc.onRemoteVolume(22, 2000));
+    TEST_ASSERT_EQUAL_INT(22, vc.value());
+}
+
 // --- ButtonDetector ---------------------------------------------------------
 
 // Hilfsfunktion: hält einen Pegel über eine Zeitspanne und sammelt Ereignisse.
@@ -243,6 +353,15 @@ int main(int, char**) {
     RUN_TEST(test_detent_many_clicks_fast);
     RUN_TEST(test_detent_half_step_encoder);
     RUN_TEST(test_detent_last_step_for_diagnostics);
+    RUN_TEST(test_volume_ignores_input_until_speaker_value_known);
+    RUN_TEST(test_volume_slow_turn_one_step_per_detent);
+    RUN_TEST(test_volume_is_sent_immediately_then_throttled_latest_wins);
+    RUN_TEST(test_volume_many_fast_events_send_few_messages);
+    RUN_TEST(test_volume_acceleration);
+    RUN_TEST(test_volume_is_clamped_to_0_and_100);
+    RUN_TEST(test_volume_remote_value_ignored_while_user_turns);
+    RUN_TEST(test_volume_remote_value_ignored_while_send_pending);
+    RUN_TEST(test_volume_invalidate_blocks_input_until_new_value);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);
     RUN_TEST(test_button_bounce_is_ignored);

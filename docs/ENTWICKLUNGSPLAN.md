@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0 umgesetzt, wartet auf den Geräte-Test (T4).
+> **Stand:** Schritt 0 ✅ abgeschlossen. Schritt 1 umgesetzt, wartet auf den Geräte-Test (T3 + T4).
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -73,7 +73,7 @@ Umrechnungen), liegt in `*_core` **ohne Arduino-Abhängigkeit** und wird mit
 
 ## 4. Die Schritte
 
-### Schritt 0 – Walking Skeleton: Board lebt
+### Schritt 0 – Walking Skeleton: Board lebt ✅
 
 **Ziel:** Die Hardware ist komplett ansteuerbar. Noch kein Sonos.
 
@@ -104,7 +104,7 @@ beim Drücken blinkt ein Kreis.
 
 ---
 
-### Schritt 1 – Lautstärke eines festen Speakers mit dem Ring regeln
+### Schritt 1 – Lautstärke eines festen Speakers mit dem Ring regeln 🧪
 
 **Ziel:** Der erste echte Durchstich: Ring → WLAN → Sonos → Display.
 

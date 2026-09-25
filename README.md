@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 0 von 9, der Hardware-Test.
+> **Projektstand:** Schritt 1 von 9: Der Drehring regelt die Lautstärke eines Sonos-Speakers.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -32,8 +32,8 @@ Außen läuft der Fortschrittsbogen.
 
 | Schritt | Funktion | Status |
 |---|---|---|
-| 0 | Hardware läuft: Display, Touch, Drehring, Taste | 🧪 wartet auf Geräte-Test |
-| 1 | Lautstärke eines Speakers mit dem Ring regeln | ⏳ |
+| 0 | Hardware läuft: Display, Touch, Drehring, Taste | ✅ getestet |
+| 1 | Lautstärke eines Speakers mit dem Ring regeln | 🧪 wartet auf Geräte-Test |
 | 2 | Play/Pause mit Statusanzeige | ⏳ |
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ⏳ |
 | 4 | Ringmenü und Scrubbing | ⏳ |
@@ -96,7 +96,7 @@ git clone https://github.com/FourBob/MaTouchSonos.git
 cd MaTouchSonos
 ```
 
-### 3. WLAN-Zugangsdaten eintragen (ab Schritt 1)
+### 3. WLAN-Zugangsdaten und Speaker eintragen
 
 ```bash
 cp include/secrets.example.h include/secrets.h
@@ -105,6 +105,13 @@ cp include/secrets.example.h include/secrets.h
 
 `include/secrets.h` steht in `.gitignore` und wird **nie** committet.
 
+**Die IP eines Speakers findest du** in der Geräteliste deines Routers (Sonos-Geräte heißen dort meist
+„Sonos-…“ oder nach dem Modell) oder in der Sonos-App in den Systemeinstellungen unter den Infos
+zum System. Ob die IP stimmt, prüfst du mit `python3 tools/sonos_probe.py <IP> info`: Das zeigt den Raumnamen.
+Ab Schritt 5 findet die Fernbedienung alle Speaker selbst, dann entfällt die IP.
+
+> Das Board kann nur **2,4-GHz-WLAN**. Bei getrennten 2,4-/5-GHz-Netzen den 2,4-GHz-Namen eintragen.
+
 ### 4. Bauen und flashen
 
 Board per USB-C anschließen, dann:
@@ -112,6 +119,12 @@ Board per USB-C anschließen, dann:
 ```bash
 pio run -e matouch -t upload      # bauen + flashen
 pio device monitor -e matouch     # serielles Log ansehen (Beenden: Strg+C)
+```
+
+Für den Hardware-Testbildschirm aus Schritt 0 (Display, Touch, Drehring, Taste prüfen):
+
+```bash
+pio run -e matouch_hwtest -t upload
 ```
 
 In VS Code geht das über die PlatformIO-Leiste unten: **→ Upload**, danach **🔌 Serial Monitor**.
@@ -131,14 +144,15 @@ Flashen z. B. mit dem [ESP Web Flasher](https://espressif.github.io/esptool-js/)
 | `0x8000` | partitions.bin |
 | `0x10000` | firmware.bin |
 
-(Für Schritt 0 reicht das. Ab Schritt 1 enthält die CI-Firmware nur Platzhalter-WLAN-Daten,
-dann also selbst bauen.)
+Die CI-Firmware kennt dein WLAN nicht: Sie zeigt nur den Hinweis, `secrets.h` auszufüllen.
+Für die Fernbedienung also selbst bauen. Für den Hardware-Test reicht die CI-Firmware.
 
 ## Tests
 
 ```bash
-pio test -e native     # Unit-Tests der Logik auf dem PC, kein Board nötig
-pio run  -e matouch    # Firmware bauen
+pio test -e native                                  # Unit-Tests auf dem PC, kein Board nötig
+pio run  -e matouch                                 # Firmware bauen
+python3 tools/sonos_probe.py <Speaker-IP> volume get  # Sonos-Befehl vom PC aus testen
 ```
 
 Das Projekt wird auf vier Ebenen getestet: Unit-Tests, CI-Build, Protokoll-Tests gegen die
@@ -152,13 +166,23 @@ include/
   lv_conf.h             LVGL-Konfiguration
   secrets.example.h     Vorlage für WLAN-Zugangsdaten
 lib/
-  app_core/             Hardwareunabhängige Logik (Encoder, Taste, Bedienlogik), auf dem PC getestet
+  app_core/             Bedienlogik (Encoder, Taste, Lautstärke-Drossel), auf dem PC getestet
+  sonos_core/           Sonos-Protokoll (SOAP, XML), auf dem PC getestet
   hal/                  Hardware: Display + LVGL, Touch, Drehring/Taste
+  net/                  WLAN und Sonos-Kommunikation in eigener Task
 src/
-  main.cpp              Start und Hauptschleife
-  TestScreen.*          Hardware-Testbildschirm (Schritt 0)
+  main.cpp              Einstieg, wählt die Betriebsart
+  RemoteApp.cpp         Fernbedienung
+  HwTestApp.cpp         Hardware-Test (Schritt 0)
+  VolumeScreen.*        Lautstärke-Bildschirm
+  TestScreen.*          Hardware-Testbildschirm
+  fonts/                Schriften mit Umlauten (erzeugt mit tools/gen_fonts.sh)
 test/
-  test_app_core/        Unit-Tests
+  test_app_core/        Unit-Tests Bedienlogik
+  test_sonos_core/      Unit-Tests Sonos-Protokoll, inkl. Testdaten (fixtures.h)
+tools/
+  sonos_probe.py        Sonos-Befehle vom PC aus testen (T3)
+  gen_fonts.sh          Schriften neu erzeugen
 docs/
   ENTWICKLUNGSPLAN.md   Schritte, Akzeptanzkriterien, Teststrategie
   ARCHITEKTUR.md        Aufbau der Software und Designentscheidungen
@@ -172,7 +196,11 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 
 | Problem | Lösung |
 |---|---|
-| Display bleibt schwarz | Im Log nach `FEHLER: Display` suchen. PSRAM muss als OPI erkannt werden (`PSRAM: 8 MB` im Log). |
+| Display bleibt schwarz | Im Log nach `FEHLER: Display` suchen. PSRAM muss als OPI erkannt werden (`PSRAM: 7.9 MB` im Log). |
+| Build-Fehler `include/secrets.h fehlt` | `cp include/secrets.example.h include/secrets.h` und Werte eintragen. |
+| Anzeige „include/secrets.h ausfüllen“ | Die Datei enthält noch die Platzhalter `MeinWLAN` usw. |
+| Bleibt bei „WLAN verbinden …“ | SSID/Passwort prüfen. Nur 2,4 GHz wird unterstützt. |
+| „Speaker nicht erreichbar“ | Speaker-IP prüfen: `python3 tools/sonos_probe.py <IP> info` muss den Raumnamen zeigen. |
 | Farben vertauscht (Rot ↔ Blau) | Die drei Farbbalken oben auf dem Testbild prüfen und das Ergebnis melden. Die Pins in `board_config.h` werden dann angepasst. |
 | Kein serielles Log | Der USB-C-Port ist der native USB des ESP32-S3. Nach dem Flashen einmal RESET drücken und den Monitor neu verbinden. |
 | Nur jede zweite Rastung zählt | In `include/board_config.h` `ENCODER_HALF_STEP` auf `1` setzen. Das Log zeigt dann `raw +2` statt `raw +4`. |

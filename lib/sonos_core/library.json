@@ -1,0 +1,7 @@
+{
+  "name": "sonos_core",
+  "version": "0.1.0",
+  "description": "Sonos-UPnP-Protokoll ohne Hardwarezugriff: SOAP-Nachrichten bauen, Antworten und Fehler auswerten. Auf dem PC testbar.",
+  "frameworks": "*",
+  "platforms": "*"
+}

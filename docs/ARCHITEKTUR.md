@@ -15,15 +15,17 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ src/            main.cpp: Start, Hauptschleife            │
-│                 Screens (Schritt 0: TestScreen)           │
+│ src/            main.cpp → RemoteApp / HwTestApp          │
+│                 VolumeScreen, TestScreen, fonts/          │
 ├──────────────────────────────────────────────────────────┤
-│ lib/ui/         LVGL-Bildschirme (ab Schritt 1)           │
+│ (lib/ui/        Bildschirme wandern hierher, sobald es    │
+│                 mehrere gibt – ab Schritt 3)              │
 ├───────────────────────────────┬──────────────────────────┤
 │ lib/app_core/   Bedienlogik   │ lib/sonos_core/          │
 │  QuadratureDecoder            │  SOAP-Envelopes, XML-    │
 │  RotaryDetentDecoder          │  und DIDL-Parser,        │
-│  ButtonDetector               │  Topologie (ab Schritt 1)│
+│  ButtonDetector               │  RenderingControl        │
+│  VolumeController             │  (Topologie ab Schritt 5)│
 │  Zustandsmaschine (ab 2/4)    │                          │
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
@@ -58,6 +60,25 @@ Touch ◀──I2C-Polling── LVGL-Eingabetreiber ─────────
 - Der **ButtonDetector** meldet `Long` schon beim Erreichen von 600 ms, nicht erst beim
   Loslassen. So öffnet sich das Menü, während der Finger noch drückt.
 
+## Nebenläufigkeit (ab Schritt 1)
+
+```
+Kern 1: loop()                                   Kern 0: SonosLink-Task
+─────────────────                                ─────────────────────
+Drehring → VolumeController                      WLAN aufbauen / überwachen
+   │  (Anzeige sofort, Drossel 150 ms)           GetVolume nach Start/Fehler
+   └─ setVolume(v) ──▶ [Queue, Länge 1] ──▶ SetVolume an Speaker (HTTP, Port 1400)
+                        (neuester Wert gewinnt)
+Anzeige ◀── pollEvent() ◀── [Event-Queue] ◀── WLAN-/Speaker-Zustand, Lautstärke, Fehler
+```
+
+- LVGL wird nur von Kern 1 aus angefasst.
+- Die UI wartet nie auf das Netz. Ein HTTP-Timeout (bis 2 s) bremst nur die Netzwerk-Task.
+- Die Queue für die Lautstärke hat die Länge 1 und wird überschrieben. Beim schnellen Drehen
+  sammeln sich deshalb keine veralteten Befehle an.
+- Nach jedem Fehler gilt die Lautstärke als unbekannt (Anzeige „–“, Drehen gesperrt), bis
+  GetVolume wieder eine Antwort liefert. So zeigt das Display nie einen Wert an, den der Speaker nicht hat.
+
 ## Designentscheidungen
 
 | Entscheidung | Begründung |
@@ -67,6 +88,8 @@ Touch ◀──I2C-Polling── LVGL-Eingabetreiber ─────────
 | LVGL 8.3 statt 9.x | Stabil, gut dokumentiert, Makerfabs nutzt 8.3. Ein Umstieg ist später möglich. |
 | Ein Thread für die UI | LVGL ist nicht threadsicher. Alle `lv_*`-Aufrufe laufen in `loop()`, das Netzwerk bekommt später eine eigene Task mit Nachrichten-Queue. |
 | WLAN fest im Code (`secrets.h`) | Wunsch des Projekts: einfach und ohne Setup-Portal. Die Datei ist per `.gitignore` geschützt. |
+| Eigene Schriften (`src/fonts/`) | Die LVGL-Schriften haben nur ASCII. Die eigenen enthalten Latin-1 (Umlaute, ß) und die LVGL-Symbole. Neu erzeugen mit `tools/gen_fonts.sh`. |
+| Zwei Firmware-Varianten | `matouch` (Fernbedienung) und `matouch_hwtest` (Hardware-Test) teilen sich `hal` und `app_core`. So bleibt der Hardware-Test jederzeit verfügbar. |
 | C++17 | Für `constexpr`/`inline`-Member und bessere Typsicherheit. Wird in `platformio.ini` gesetzt. |
 
 ## Sonos-Schnittstelle (Ausblick)

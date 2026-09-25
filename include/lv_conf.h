@@ -44,12 +44,14 @@
 #define LV_USE_PERF_MONITOR MTS_SHOW_PERF
 #define LV_USE_PERF_MONITOR_POS LV_ALIGN_BOTTOM_MID
 
-/* --- Schriften ------------------------------------------------------------ */
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_20 1
-#define LV_FONT_MONTSERRAT_28 1
-#define LV_FONT_MONTSERRAT_48 1
-#define LV_FONT_DEFAULT &lv_font_montserrat_20
+/* --- Schriften ------------------------------------------------------------
+ * Eigene Schriften mit Umlauten und LVGL-Symbolen (src/fonts/, erzeugt mit
+ * tools/gen_fonts.sh). Die eingebauten Montserrat-Schriften haben nur ASCII und
+ * sind deshalb abgeschaltet. Verwendung: &font_de_14, &font_de_20, &font_de_28, &font_de_48 */
+#define LV_FONT_MONTSERRAT_14 0
+#define LV_FONT_CUSTOM_DECLARE \
+    LV_FONT_DECLARE(font_de_14) LV_FONT_DECLARE(font_de_20) LV_FONT_DECLARE(font_de_28) LV_FONT_DECLARE(font_de_48)
+#define LV_FONT_DEFAULT &font_de_20
 
 /* --- Theme ---------------------------------------------------------------- */
 #define LV_USE_THEME_DEFAULT 1

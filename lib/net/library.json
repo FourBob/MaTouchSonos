@@ -1,0 +1,7 @@
+{
+  "name": "net",
+  "version": "0.1.0",
+  "description": "WLAN und Sonos-Kommunikation in einer eigenen FreeRTOS-Task. Nutzt sonos_core für das Protokoll.",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}
