@@ -6,163 +6,103 @@
 #include <vector>
 
 #include "ButtonDetector.h"
-#include "QuadratureDecoder.h"
-#include "RotaryDetentDecoder.h"
+#include "DetentTracker.h"
 #include "VolumeController.h"
 
 using app::ButtonDetector;
 using app::ButtonEvent;
-using app::QuadratureDecoder;
-using app::RotaryDetentDecoder;
+using app::DetentTracker;
 using app::VolumeController;
 
 void setUp() {}
 void tearDown() {}
 
-// --- QuadratureDecoder ------------------------------------------------------
-
-// Eine volle Rastung im Uhrzeigersinn: 11 -> 01 -> 00 -> 10 -> 11 (A eilt B voraus,
-// Ruhelage 11 wegen Pull-ups).
-static const bool kCwA[] = {false, false, true, true};
-static const bool kCwB[] = {true, false, false, true};
-
-static int feed(QuadratureDecoder& dec, const bool* a, const bool* b, int n) {
-    int sum = 0;
-    for (int i = 0; i < n; ++i) sum += dec.update(a[i], b[i]);
-    return sum;
-}
-
-void test_quadrature_clockwise_detent_gives_plus_four() {
-    QuadratureDecoder dec(true, true);
-    TEST_ASSERT_EQUAL_INT(4, feed(dec, kCwA, kCwB, 4));
-}
-
-void test_quadrature_counter_clockwise_detent_gives_minus_four() {
-    QuadratureDecoder dec(true, true);
-    // Rückwärts durch dieselbe Folge: 11 -> 10 -> 00 -> 01 -> 11
-    const bool a[] = {true, false, false, true};
-    const bool b[] = {false, false, true, true};
-    TEST_ASSERT_EQUAL_INT(-4, feed(dec, a, b, 4));
-}
-
-void test_quadrature_same_state_gives_zero() {
-    QuadratureDecoder dec(true, true);
-    TEST_ASSERT_EQUAL_INT(0, dec.update(true, true));
-    TEST_ASSERT_EQUAL_INT(0, dec.update(true, true));
-}
-
-void test_quadrature_invalid_jump_is_ignored() {
-    QuadratureDecoder dec(true, true);
-    TEST_ASSERT_EQUAL_INT(0, dec.update(false, false));  // beide Bits gleichzeitig
-    TEST_ASSERT_EQUAL_INT(0, dec.update(true, true));
-}
-
-void test_quadrature_contact_bounce_cancels_out() {
-    QuadratureDecoder dec(true, true);
-    // Prellen an einer Flanke: 11 -> 01 -> 11 -> 01 hin und her, dann weiter.
-    int sum = 0;
-    sum += dec.update(false, true);
-    sum += dec.update(true, true);
-    sum += dec.update(false, true);
-    sum += dec.update(false, false);
-    sum += dec.update(true, false);
-    sum += dec.update(true, true);
-    TEST_ASSERT_EQUAL_INT(4, sum);
-}
-
-// --- RotaryDetentDecoder ----------------------------------------------------
-
-// Vollschritt-Encoder, Ruhelage 11. Eine Rastung:
-//   im Uhrzeigersinn:        11 -> 01 -> 00 -> 10 -> 11
-//   gegen den Uhrzeigersinn: 11 -> 10 -> 00 -> 01 -> 11
-struct Level { bool a, b; };
-static const Level kClickCw[]  = {{false, true}, {false, false}, {true, false}, {true, true}};
-static const Level kClickCcw[] = {{true, false}, {false, false}, {false, true}, {true, true}};
-
-static int feedLevels(RotaryDetentDecoder& dec, const Level* seq, int n) {
-    int sum = 0;
-    for (int i = 0; i < n; ++i) sum += dec.update(seq[i].a, seq[i].b);
-    return sum;
-}
+// --- DetentTracker ------------------------------------------------------------
+// Eingabe: fortlaufende Schrittzahl des Hardware-Zählers (PCNT) + „steht in Ruhelage“.
+// Vollschritt-Encoder: 4 Schritte pro Rastung.
 
 void test_detent_one_click_each_direction() {
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 4));
-    TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 4));
+    DetentTracker t;
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(+1, t.update(4, true));
+    TEST_ASSERT_EQUAL_INT(-1, t.update(0, true));
 }
 
-void test_detent_reported_only_at_rest_position() {
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    // Die ersten drei Zwischenschritte melden noch nichts, erst das Einrasten.
-    for (int i = 0; i < 3; ++i) TEST_ASSERT_EQUAL_INT(0, dec.update(kClickCw[i].a, kClickCw[i].b));
-    TEST_ASSERT_EQUAL_INT(+1, dec.update(kClickCw[3].a, kClickCw[3].b));
+void test_detent_nothing_while_between_detents() {
+    DetentTracker t;
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(0, t.update(1, false));
+    TEST_ASSERT_EQUAL_INT(0, t.update(3, false));
+    TEST_ASSERT_EQUAL_INT(+1, t.update(4, true));
+}
+
+void test_detent_fast_turn_many_clicks_between_samples() {
+    // Regression Schritt 1: Schnell gedreht kamen nur ~2 von 10 Klicks an.
+    // Der Hardware-Zähler verliert nichts; selbst wenn die Hauptschleife nur selten
+    // abfragt, kommen beim nächsten Einrasten alle Klicks auf einmal an.
+    DetentTracker t;
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(10, t.update(40, true));
+    TEST_ASSERT_EQUAL_INT(-7, t.update(12, true));
 }
 
 void test_detent_back_and_forth_single_clicks() {
-    // Fehlerbild aus dem Geräte-Test von Schritt 0: ein Klick links, ein Klick rechts.
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
+    // Fehlerbild aus dem Geräte-Test von Schritt 0: ein Klick rechts, ein Klick links.
+    DetentTracker t;
+    t.reset(0);
     for (int i = 0; i < 10; ++i) {
-        TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 4));
-        TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 4));
+        TEST_ASSERT_EQUAL_INT(+1, t.update(4, true));
+        TEST_ASSERT_EQUAL_INT(-1, t.update(0, true));
     }
 }
 
-void test_detent_back_and_forth_after_lost_step() {
-    // Regression: Ein durch Prellen verlorener Zwischenschritt darf keinen dauerhaften
-    // Versatz erzeugen (der alte Schrittzähler meldete danach beim Hin-und-her nichts mehr).
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    // Klick im Uhrzeigersinn, bei dem der Zustand 00 verpasst wird: 11 -> 01 -> 10 -> 11
-    const Level lossy[] = {{false, true}, {true, false}, {true, true}};
-    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, lossy, 3));
+void test_detent_lost_step_causes_no_permanent_offset() {
+    // Ein verlorener Schritt (3 statt 4) zählt trotzdem als Klick; danach wird in der
+    // Ruhelage neu synchronisiert, Hin-und-her funktioniert weiter.
+    DetentTracker t;
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(+1, t.update(3, true));
     for (int i = 0; i < 5; ++i) {
-        TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 4));
-        TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 4));
+        TEST_ASSERT_EQUAL_INT(-1, t.update(-1, true));
+        TEST_ASSERT_EQUAL_INT(+1, t.update(3, true));
     }
 }
 
 void test_detent_half_turn_and_back_is_nothing() {
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    // Halb hin (11 -> 01 -> 00) und wieder zurück (00 -> 01 -> 11)
-    const Level seq[] = {{false, true}, {false, false}, {false, true}, {true, true}};
-    TEST_ASSERT_EQUAL_INT(0, feedLevels(dec, seq, 4));
+    DetentTracker t;
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(0, t.update(2, false));
+    TEST_ASSERT_EQUAL_INT(0, t.update(0, true));
 }
 
 void test_detent_bounce_at_rest_is_nothing() {
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    const Level seq[] = {{false, true}, {true, true}, {false, true}, {true, true}};
-    TEST_ASSERT_EQUAL_INT(0, feedLevels(dec, seq, 4));
+    DetentTracker t;
+    t.reset(100);
+    TEST_ASSERT_EQUAL_INT(0, t.update(101, true));  // ein Prell-Schritt
+    TEST_ASSERT_EQUAL_INT(0, t.update(100, true));
 }
 
-void test_detent_many_clicks_fast() {
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    int sum = 0;
-    for (int i = 0; i < 25; ++i) sum += feedLevels(dec, kClickCw, 4);
-    TEST_ASSERT_EQUAL_INT(25, sum);
+void test_detent_rounding_full_step() {
+    DetentTracker t;
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(1, t.update(2, true));   // halbe Strecke zählt
+    TEST_ASSERT_EQUAL_INT(1, t.update(7, true));   // 5 -> 1
+    TEST_ASSERT_EQUAL_INT(2, t.update(13, true));  // 6 -> 2
+    TEST_ASSERT_EQUAL_INT(-1, t.update(11, true)); // -2 -> -1
 }
 
 void test_detent_half_step_encoder() {
-    // Halbschritt-Encoder: Ruhelagen 11 und 00, je 2 Zustandswechsel pro Rastung.
-    RotaryDetentDecoder dec(/*halfStep=*/true);
-    dec.reset(true, true);
-    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw, 2));      // 11 -> 01 -> 00
-    TEST_ASSERT_EQUAL_INT(+1, feedLevels(dec, kClickCw + 2, 2));  // 00 -> 10 -> 11
-    TEST_ASSERT_EQUAL_INT(-1, feedLevels(dec, kClickCcw, 2));     // 11 -> 10 -> 00
+    DetentTracker t(/*halfStep=*/true);
+    t.reset(0);
+    TEST_ASSERT_EQUAL_INT(+1, t.update(2, true));
+    TEST_ASSERT_EQUAL_INT(+3, t.update(8, true));
+    TEST_ASSERT_EQUAL_INT(-1, t.update(6, true));
 }
 
-void test_detent_last_step_for_diagnostics() {
-    RotaryDetentDecoder dec;
-    dec.reset(true, true);
-    dec.update(false, true);
-    TEST_ASSERT_EQUAL_INT(+1, dec.lastStep());
-    dec.update(false, true);
-    TEST_ASSERT_EQUAL_INT(0, dec.lastStep());
+void test_detent_first_update_only_initializes() {
+    DetentTracker t;
+    TEST_ASSERT_EQUAL_INT(0, t.update(1234, true));
+    TEST_ASSERT_EQUAL_INT(+1, t.update(1238, true));
 }
 
 // --- VolumeController ----------------------------------------------------------
@@ -339,20 +279,16 @@ void test_button_millis_wraparound() {
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_quadrature_clockwise_detent_gives_plus_four);
-    RUN_TEST(test_quadrature_counter_clockwise_detent_gives_minus_four);
-    RUN_TEST(test_quadrature_same_state_gives_zero);
-    RUN_TEST(test_quadrature_invalid_jump_is_ignored);
-    RUN_TEST(test_quadrature_contact_bounce_cancels_out);
     RUN_TEST(test_detent_one_click_each_direction);
-    RUN_TEST(test_detent_reported_only_at_rest_position);
+    RUN_TEST(test_detent_nothing_while_between_detents);
+    RUN_TEST(test_detent_fast_turn_many_clicks_between_samples);
     RUN_TEST(test_detent_back_and_forth_single_clicks);
-    RUN_TEST(test_detent_back_and_forth_after_lost_step);
+    RUN_TEST(test_detent_lost_step_causes_no_permanent_offset);
     RUN_TEST(test_detent_half_turn_and_back_is_nothing);
     RUN_TEST(test_detent_bounce_at_rest_is_nothing);
-    RUN_TEST(test_detent_many_clicks_fast);
+    RUN_TEST(test_detent_rounding_full_step);
     RUN_TEST(test_detent_half_step_encoder);
-    RUN_TEST(test_detent_last_step_for_diagnostics);
+    RUN_TEST(test_detent_first_update_only_initializes);
     RUN_TEST(test_volume_ignores_input_until_speaker_value_known);
     RUN_TEST(test_volume_slow_turn_one_step_per_detent);
     RUN_TEST(test_volume_is_sent_immediately_then_throttled_latest_wins);

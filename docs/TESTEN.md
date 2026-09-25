@@ -154,7 +154,10 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 - [ ] Ein Klick nach rechts: +1, hörbar lauter, Log `ENC +1 -> Lautstärke …` und `SONOS SetVolume … ok`
 - [ ] Ein Klick nach links: −1
 - [ ] Die Anzeige reagiert sofort. Der Speaker folgt spürbar schnell (Ziel: unter 0,5 s)
+- [ ] 10 Klicks **schnell** am Stück: Die Lautstärke steigt um **mindestens 10** (durch die Beschleunigung eher mehr).
+      Im Log steht `raw` ungefähr 4 × Klicks.
 - [ ] Schnell drehen: Die Werte springen in größeren Schritten (Beschleunigung), nichts stottert.
+- [ ] `loop_max_ms` in den `STATUS`-Zeilen notieren (während du drehst)
       Danach zeigt die Sonos-App denselben Endwert wie das Display.
 - [ ] 0 und 100 sind erreichbar, aber nicht mehr (vorsichtig mit der Lautstärke 😉)
 

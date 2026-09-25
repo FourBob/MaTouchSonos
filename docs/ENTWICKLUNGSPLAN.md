@@ -86,7 +86,7 @@ beim Drücken blinkt ein Kreis.
   Makerfabs-Beispiel `fw_test` übernehmen
 - LVGL 8.3 mit Framebuffer im PSRAM, Double Buffering
 - Touch-Treiber CST826 (I2C) an LVGL anbinden
-- Encoder per Interrupt mit Quadratur-Decoder, Taster mit Entprellung; Ereignisse: `Dreh(+/-n)`, `Kurz`, `Lang`
+- Encoder über den Hardware-Pulszähler (PCNT) mit Synchronisation in der Ruhelage (ursprünglich per Interrupt, siehe ARCHITEKTUR.md), Taster mit Entprellung; Ereignisse: `Dreh(+/-n)`, `Kurz`, `Lang`
 - GitHub Actions: `pio run -e matouch` und `pio test -e native`
 
 **Tests**

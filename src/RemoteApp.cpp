@@ -32,6 +32,7 @@ namespace {
 app::ButtonDetector button;
 app::VolumeController volume;
 VolumeScreen screen;
+int32_t rawSinceLastDetent = 0;
 
 bool secretsConfigured() {
     // Platzhalter aus secrets.example.h erkennen (z. B. CI-Build oder vergessen auszufüllen).
@@ -96,14 +97,17 @@ void setup() {
 void loop() {
     const uint32_t now = millis();
 
-    hal::Input::takeRawSteps();  // Rohschritte werden hier nicht gebraucht
+    rawSinceLastDetent += hal::Input::takeRawSteps();
     const int32_t d = hal::Input::takeDetents();
     if (d != 0) {
         if (volume.onUserDetents(d, now)) {
             screen.setVolume(volume.value(), true);
         }
-        Serial.printf("ENC %+ld -> Lautstärke %d%s\n", static_cast<long>(d), volume.value(),
+        // raw = Hardware-Zählerschritte (4 pro Rastung) – zeigt, ob Klicks verloren gehen.
+        Serial.printf("ENC %+ld (raw %+ld) -> Lautstärke %d%s\n", static_cast<long>(d),
+                      static_cast<long>(rawSinceLastDetent), volume.value(),
                       volume.hasValue() ? "" : " (Speaker noch unbekannt, ignoriert)");
+        rawSinceLastDetent = 0;
     }
 
     int toSend;
@@ -126,7 +130,7 @@ void loop() {
     while (net::SonosLink::pollEvent(e)) handleNetEvent(e, now);
 
     lv_timer_handler();
-    diag::logStatusPeriodically(now);
+    diag::logStatusPeriodically(millis(), now);
     delay(5);
 }
 

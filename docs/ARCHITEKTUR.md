@@ -22,15 +22,15 @@
 │                 mehrere gibt – ab Schritt 3)              │
 ├───────────────────────────────┬──────────────────────────┤
 │ lib/app_core/   Bedienlogik   │ lib/sonos_core/          │
-│  QuadratureDecoder            │  SOAP-Envelopes, XML-    │
-│  RotaryDetentDecoder          │  und DIDL-Parser,        │
+│  DetentTracker                │  SOAP-Envelopes, XML-    │
+│                               │  und DIDL-Parser,        │
 │  ButtonDetector               │  RenderingControl        │
 │  VolumeController             │  (Topologie ab Schritt 5)│
 │  Zustandsmaschine (ab 2/4)    │                          │
 │        ── reines C++, auf dem PC getestet ──             │
 ├───────────────────────────────┴──────────────────────────┤
 │ lib/net/        WLAN, HTTP, SSDP (ab Schritt 1/5)         │
-│ lib/hal/        Display+LVGL, Touch, Drehring/Taste       │
+│ lib/hal/        Display+LVGL, Touch, Drehring (PCNT), Taste│
 ├──────────────────────────────────────────────────────────┤
 │ Arduino-ESP32 2.0.x · Arduino_GFX 1.3.8 · LVGL 8.3.11     │
 └──────────────────────────────────────────────────────────┘
@@ -38,27 +38,33 @@
 
 Abhängigkeiten zeigen nur nach unten. `app_core` und `sonos_core` kennen weder Arduino noch LVGL.
 
-## Datenfluss der Eingaben (Schritt 0)
+## Datenfluss der Eingaben
 
 ```
-Drehring ──Interrupt──▶ RotaryDetentDecoder ──Rastungen (atomic)──▶ loop() ──▶ Screen
-                        (QuadratureDecoder +                                    │
-                         Ruhelagen-Synchronisation)                             ▼
-Taste ──Pegel──▶ ButtonDetector ──Short/Long──▶ Screen ──────────────────▶ LVGL ──▶ Display
-Touch ◀──I2C-Polling── LVGL-Eingabetreiber ───────────────────────────────────▲
+Drehring ──A/B──▶ PCNT (Hardware-Zähler,       ──Position──▶ DetentTracker ──Rastungen──▶ loop()
+                  Glitch-Filter 12,8 µs)         + Ruhelage     (app_core)
+Taste ──Pegel──▶ ButtonDetector ──Short/Long──▶ loop()
+Touch ◀──I2C-Polling── LVGL-Eingabetreiber
 ```
 
-- Der **QuadratureDecoder** wertet beide Encoder-Signale per Übergangstabelle aus. Ungültige
-  Sprünge durch Kontaktprellen werden verworfen, eine zeitliche Entprellung ist nicht nötig.
-- Der **RotaryDetentDecoder** summiert die Rohschritte und wertet erst aus, wenn der Encoder
-  wieder in seiner **Ruhelage** steht (A = B = 1). Dort meldet er eine Rastung, wenn mehr als
-  die halbe Strecke zurückgelegt wurde, und setzt die Summe auf 0.
-  *Warum so?* Ein reiner Zähler „alle 4 Rohschritte eine Rastung“ verschiebt sich dauerhaft um
-  einen halben Klick, sobald durch Prellen ein Schritt verloren geht. In eine Richtung merkt man
-  das nicht, aber beim Hin-und-her-Drehen kommt dann kein Klick mehr an. Genau das hat der
-  Geräte-Test von Schritt 0 gezeigt. Die Synchronisation in der Ruhelage schließt diesen Fehler aus.
+- Der **PCNT** (Pulse Counter) des ESP32-S3 zählt jede Flanke beider Encoder-Signale in
+  Hardware (Quadratur x4) und filtert Prellimpulse heraus. Er verliert keine Schritte, egal
+  wie beschäftigt die CPU ist.
+- Der **DetentTracker** fragt in jedem Schleifendurchlauf Position und Pin-Pegel ab. Nur wenn
+  der Encoder in der **Ruhelage** steht (A = B = 1), rechnet er die Schritte seit der letzten
+  Ruhelage in ganze Rastungen um (auf die nächste Rastung gerundet) und synchronisiert neu.
+  Einzelne verlorene Schritte erzeugen so keinen dauerhaften Versatz, und Hin-und-her-Drehen
+  kommt vollständig an.
 - Der **ButtonDetector** meldet `Long` schon beim Erreichen von 600 ms, nicht erst beim
   Loslassen. So öffnet sich das Menü, während der Finger noch drückt.
+
+**Vorgeschichte, aus den Geräte-Tests gelernt:**
+1. Schritt 0: Ein reiner Schrittzähler („4 Schritte = 1 Klick“) verschob sich nach einem
+   verlorenen Schritt dauerhaft, Hin-und-her-Drehen kam nicht mehr an.
+   Abhilfe: Synchronisation in der Ruhelage.
+2. Schritt 1: Die Auswertung per GPIO-Interrupt verlor bei schnellem Drehen Schritte, sobald
+   WLAN und Bildaufbau liefen (10 Klicks ergaben nur 2).
+   Abhilfe: Zählen im Hardware-Zähler PCNT.
 
 ## Nebenläufigkeit (ab Schritt 1)
 

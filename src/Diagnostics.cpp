@@ -6,6 +6,7 @@ namespace diag {
 namespace {
 constexpr uint32_t kStatusLogIntervalMs = 5000;
 uint32_t lastStatusLog = 0;
+uint32_t loopMaxMs = 0;
 }  // namespace
 
 void logBootInfo(const char* mode) {
@@ -18,13 +19,18 @@ void logBootInfo(const char* mode) {
     Serial.printf("PSRAM: %.1f MB\n", ESP.getPsramSize() / (1024.0 * 1024.0));
 }
 
-void logStatusPeriodically(uint32_t nowMs) {
+void logStatusPeriodically(uint32_t nowMs, uint32_t loopStartMs) {
+    const uint32_t loopMs = millis() - loopStartMs;
+    if (loopMs > loopMaxMs) loopMaxMs = loopMs;
+
     if (nowMs - lastStatusLog < kStatusLogIntervalMs) return;
     lastStatusLog = nowMs;
-    Serial.printf("STATUS heap_frei=%lu psram_frei=%lu uptime_s=%lu\n",
+    Serial.printf("STATUS heap_frei=%lu psram_frei=%lu uptime_s=%lu loop_max_ms=%lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(ESP.getFreePsram()),
-                  static_cast<unsigned long>(nowMs / 1000));
+                  static_cast<unsigned long>(nowMs / 1000),
+                  static_cast<unsigned long>(loopMaxMs));
+    loopMaxMs = 0;
 }
 
 }  // namespace diag

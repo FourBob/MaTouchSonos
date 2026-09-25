@@ -70,8 +70,8 @@ Der Touch wird per Polling gelesen (Register `0x02`, 5 Bytes).
 
 | Signal | GPIO | Hinweis |
 |---|---|---|
-| Encoder A (CLK) | 13 | interner Pull-up, Interrupt auf beiden Flanken |
-| Encoder B (DT) | 10 | interner Pull-up, Interrupt auf beiden Flanken |
+| Encoder A (CLK) | 13 | interner Pull-up, gezählt vom Hardware-Pulszähler PCNT (Unit 0) |
+| Encoder B (DT) | 10 | interner Pull-up, PCNT Unit 0 |
 | Taste | 14 | aktiv LOW, interner Pull-up |
 
 ### Erweiterung

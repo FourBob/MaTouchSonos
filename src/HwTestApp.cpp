@@ -60,7 +60,7 @@ void loop() {
 
     screen.tick(now);
     lv_timer_handler();
-    diag::logStatusPeriodically(now);
+    diag::logStatusPeriodically(millis(), now);
     delay(5);
 }
 

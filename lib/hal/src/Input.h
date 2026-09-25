@@ -7,16 +7,17 @@ namespace hal {
 /**
  * Drehring (Quadratur-Encoder) und Taste.
  *
- * Der Encoder wird per Interrupt auf beiden Signalen ausgewertet (RotaryDetentDecoder
- * aus app_core). Die Hauptschleife holt die seit dem letzten Aufruf abgeschlossenen
- * Rastungen mit takeDetents() ab. Die Tastenlogik (kurz/lang) liegt in app_core.
+ * Der Encoder wird vom **Hardware-Pulszähler (PCNT)** des ESP32-S3 gezählt: jede Flanke
+ * beider Signale, mit Glitch-Filter gegen Kontaktprellen, unabhängig davon, wie
+ * beschäftigt die CPU gerade ist (WLAN, Bildaufbau). Die Umrechnung in Rastungen
+ * übernimmt app::DetentTracker in takeDetents().
  */
 class Input {
 public:
     static void begin();
 
     /**
-     * Rastungen seit dem letzten Aufruf.
+     * Rastungen seit dem letzten Aufruf – in jedem Schleifendurchlauf aufrufen.
      * Positiv = im Uhrzeigersinn (Richtung über ENCODER_INVERT einstellbar).
      */
     static int32_t takeDetents();
