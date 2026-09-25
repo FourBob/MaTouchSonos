@@ -44,18 +44,42 @@ static const char* kSetVolume25Request =
     R"(<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>25</DesiredVolume>)"
     R"(</u:SetVolume></s:Body></s:Envelope>)";
 
-// [synthetisch] GetTransportInfo, Antwort HTTP 200 (Format laut UPnP AVTransport:1)
+// GetTransportInfo, Antwort HTTP 200 – [aufgezeichnet] Sonos S2, 2026-09-25 (sonos_probe.py --save)
 static const char* kGetTransportInfoPlaying =
     R"(<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">)"
     R"(<s:Body><u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">)"
     R"(<CurrentTransportState>PLAYING</CurrentTransportState><CurrentTransportStatus>OK</CurrentTransportStatus>)"
     R"(<CurrentSpeed>1</CurrentSpeed></u:GetTransportInfoResponse></s:Body></s:Envelope>)";
 
-// Erwartete Anfrage für Play – muss byte-genau mit tools/sonos_probe.py übereinstimmen.
+// GetTransportInfo, Anfrage – [aufgezeichnet] Sonos S2, 2026-09-25 (sonos_probe.py --save)
+static const char* kGetTransportInfoRequest =
+    R"(<?xml version="1.0" encoding="utf-8"?>)"
+    R"(<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">)"
+    R"(<s:Body><u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>)"
+    R"(</u:GetTransportInfo></s:Body></s:Envelope>)";
+
+// Pause, Anfrage – [aufgezeichnet] Sonos S2, 2026-09-25 (sonos_probe.py --save)
+static const char* kPauseRequest =
+    R"(<?xml version="1.0" encoding="utf-8"?>)"
+    R"(<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">)"
+    R"(<s:Body><u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Pause>)"
+    R"(</s:Body></s:Envelope>)";
+
+// Pause, Antwort HTTP 200 – [aufgezeichnet] Sonos S2, 2026-09-25 (sonos_probe.py --save)
+static const char* kPauseResponse =
+    R"(<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">)"
+    R"(<s:Body><u:PauseResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"></u:PauseResponse></s:Body>)"
+    R"(</s:Envelope>)";
+
+// Play, Anfrage – [aufgezeichnet] Sonos S2, 2026-09-25 (sonos_probe.py --save)
 static const char* kPlayRequest =
     R"(<?xml version="1.0" encoding="utf-8"?>)"
     R"(<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">)"
     R"(<s:Body><u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">)"
     R"(<InstanceID>0</InstanceID><Speed>1</Speed></u:Play></s:Body></s:Envelope>)";
+
+// Play, Antwort HTTP 200 – [aufgezeichnet] Sonos S2, 2026-09-25 (sonos_probe.py --save)
+static const char* kPlayResponse =
+    R"(<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:PlayResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"></u:PlayResponse></s:Body></s:Envelope>)";
 
 }  // namespace fixtures

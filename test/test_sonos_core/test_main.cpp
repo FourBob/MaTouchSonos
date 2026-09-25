@@ -156,6 +156,16 @@ void test_avtransport_parse_all_states() {
     TEST_ASSERT_TRUE(avtransport::parseTransportState("QUATSCH") == TransportState::Unknown);
 }
 
+void test_avtransport_requests_match_recorded() {
+    TEST_ASSERT_EQUAL_STRING(fixtures::kGetTransportInfoRequest, avtransport::getTransportInfo().body.c_str());
+    TEST_ASSERT_EQUAL_STRING(fixtures::kPauseRequest, avtransport::pause().body.c_str());
+}
+
+void test_avtransport_play_pause_responses_are_ok() {
+    TEST_ASSERT_TRUE(evaluateResponse(200, fixtures::kPauseResponse).ok);
+    TEST_ASSERT_TRUE(evaluateResponse(200, fixtures::kPlayResponse).ok);
+}
+
 void test_avtransport_parse_rejects_fault() {
     TransportState st = TransportState::Playing;
     TEST_ASSERT_FALSE(avtransport::parseTransportInfo(fixtures::kFault402, st));
@@ -183,6 +193,8 @@ int main(int, char**) {
     RUN_TEST(test_avtransport_pause_stop_info_requests);
     RUN_TEST(test_avtransport_parse_transport_info);
     RUN_TEST(test_avtransport_parse_all_states);
+    RUN_TEST(test_avtransport_requests_match_recorded);
+    RUN_TEST(test_avtransport_play_pause_responses_are_ok);
     RUN_TEST(test_avtransport_parse_rejects_fault);
     return UNITY_END();
 }
