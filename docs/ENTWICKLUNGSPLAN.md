@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–2 ✅ abgeschlossen. Schritt 3 umgesetzt, wartet auf den Geräte-Test (T3 + T4).
+> **Stand:** Schritt 0–3 ✅ abgeschlossen. Als Nächstes: Schritt 4 (Ringmenü + Scrubbing).
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -19,7 +19,7 @@ bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Sc
 | Sonos-Anbindung | Direkt lokal: SSDP-Discovery + UPnP/SOAP über HTTP auf Port 1400, keine Cloud |
 | Setup | 5+ Speaker, Räume und Gruppen, Sonos **S2** |
 | WLAN | Fest im Code: `include/secrets.h` (in `.gitignore`), Vorlage `secrets.example.h` |
-| Bedienung | Ring = Lautstärke · kurz drücken = Play/Pause · lang drücken = Ringmenü (Raum, Favoriten, Scrub) · Wischen = Titel vor/zurück |
+| Bedienung | Ring = Lautstärke · kurz drücken = Play/Pause · lang drücken = Ringmenü (Raum, Favoriten, Scrub) · nach rechts wischen = nächster Titel, nach links = vorheriger |
 | Scrubbing | Fortschrittsbogen am Rand; im Scrub-Modus bewegt der Ring die Position, Drücken springt dorthin |
 
 ## 2. Architektur (damit jeder Schritt testbar bleibt)
@@ -160,12 +160,13 @@ Speakers als Bogen gezeigt. Drehen ändert die Lautstärke hörbar; die Zahl ste
 
 ---
 
-### Schritt 3 – Now Playing (Text + Fortschrittsbogen) und Titel wechseln 🧪
+### Schritt 3 – Now Playing (Text + Fortschrittsbogen) und Titel wechseln ✅
 
 **Ziel:** Man sieht, was läuft, und kann per Wischen Titel wechseln.
 
 **Sichtbar am Gerät:** Titel und Interpret (bei Radio: Sendername + aktueller Titel), außen ein
-Fortschrittsbogen, der mitläuft. Wischen nach links/rechts = nächster/vorheriger Titel.
+Fortschrittsbogen, der mitläuft. Nach rechts wischen = nächster Titel, nach links = vorheriger
+(ursprünglich umgekehrt geplant, nach dem Geräte-Test gedreht).
 Der Lautstärkebogen erscheint nur noch beim Drehen und blendet nach 2 s aus.
 
 **Entwicklung**

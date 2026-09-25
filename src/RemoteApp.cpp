@@ -3,7 +3,7 @@
 // Ablauf pro Schleifendurchlauf (Kern 1):
 //   Drehring   -> VolumeController (optimistisch, Drossel)  -> SonosLink.setVolume
 //   Taste kurz -> PlaybackController (optimistisch)         -> SonosLink.transport(Play/Pause)
-//   Wischen    -> nächster / vorheriger Titel               -> SonosLink.transport(Next/Previous)
+//   Wischen    -> rechts: nächster, links: vorheriger Titel              -> SonosLink.transport(Next/Previous)
 //   SonosLink-Ereignisse + Now-Playing-Momentaufnahme        -> Controller -> Anzeige
 // Das Netzwerk läuft in der SonosLink-Task auf Kern 0 und blockiert die UI nie.
 
@@ -99,7 +99,7 @@ app::PlayState toPlayState(int transportState) {
 const char* describeTransportError(int upnpCode, const char* fallback) {
     switch (upnpCode) {
         case 701: return "Nicht möglich – z. B. nichts in der Warteschlange";
-        case 711: return "Kein weiterer Titel in der Warteschlange";
+        case 711: return "Anfang bzw. Ende der Warteschlange erreicht";
         case 800: return "Speaker ist Teil einer Gruppe – IP des Gruppen-Koordinators eintragen";
         default: return fallback;
     }
@@ -206,8 +206,10 @@ void onShortPress(uint32_t now) {
 
 void onSwipe(NowPlayingScreen::Swipe dir) {
     const uint32_t now = millis();
-    const bool next = dir == NowPlayingScreen::Swipe::Left;
-    Serial.printf("SWIPE %s\n", next ? "links -> Next" : "rechts -> Previous");
+    // Nach rechts wischen = weiter (wie Blättern nach vorn), nach links = zurück.
+    // Im Geräte-Test von Schritt 3 als intuitiver empfunden als umgekehrt.
+    const bool next = dir == NowPlayingScreen::Swipe::Right;
+    Serial.printf("SWIPE %s\n", next ? "rechts -> Next" : "links -> Previous");
 
     if (!hasNowPlaying) return;
     if (currentSource() != sonos::SourceKind::Track) {

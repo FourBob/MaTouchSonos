@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 3 von 9: Now Playing mit Titel und Fortschritt, Lautstärke, Play/Pause und Titelwechsel per Wischen.
+> **Projektstand:** Schritt 3 von 9 abgeschlossen: Now Playing mit Titel und Fortschritt, Lautstärke, Play/Pause und Titelwechsel per Wischen. Als Nächstes: Ringmenü und Spulen.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -22,7 +22,7 @@ Die Bedienung ist auf die runde Form und den Drehring ausgelegt:
 | **Ring drehen** | Lautstärke (Bogen am Rand zeigt den Wert) |
 | **Kurz drücken** | Play / Pause |
 | **Lang drücken** | Ringmenü: **Raum**, **Favoriten**, **Scrub** – der Ring blättert, Drücken wählt |
-| **Wischen links/rechts** | Nächster / vorheriger Titel |
+| **Nach rechts / links wischen** | Nächster / vorheriger Titel |
 | **Scrub-Modus** | Der Ring verschiebt die Position auf dem Fortschrittsbogen, Drücken springt dorthin |
 
 Auf dem **Now-Playing-Bildschirm** stehen Titel und Interpret vor dem runden Albumcover.
@@ -35,7 +35,7 @@ Außen läuft der Fortschrittsbogen.
 | 0 | Hardware läuft: Display, Touch, Drehring, Taste | ✅ getestet |
 | 1 | Lautstärke eines Speakers mit dem Ring regeln | ✅ getestet |
 | 2 | Play/Pause mit Statusanzeige | ✅ getestet |
-| 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | 🧪 wartet auf Geräte-Test |
+| 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ✅ getestet |
 | 4 | Ringmenü und Scrubbing | ⏳ |
 | 5 | Räume automatisch finden und wählen | ⏳ |
 | 6 | Albumcover | ⏳ |
