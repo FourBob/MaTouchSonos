@@ -43,6 +43,31 @@ SoapRequest seek(int positionSec) {
                             {{"InstanceID", "0"}, {"Unit", "REL_TIME"}, {"Target", time::toUpnp(positionSec)}});
 }
 
+SoapRequest seekTrack(int trackNumber) {
+    return buildSoapRequest(services::AVTransport, "Seek",
+                            {{"InstanceID", "0"}, {"Unit", "TRACK_NR"}, {"Target", std::to_string(trackNumber)}});
+}
+
+SoapRequest setAVTransportURI(const std::string& uri, const std::string& metadata) {
+    return buildSoapRequest(services::AVTransport, "SetAVTransportURI",
+                            {{"InstanceID", "0"}, {"CurrentURI", uri}, {"CurrentURIMetaData", metadata}});
+}
+
+SoapRequest removeAllTracksFromQueue() {
+    return buildSoapRequest(services::AVTransport, "RemoveAllTracksFromQueue", {{"InstanceID", "0"}});
+}
+
+SoapRequest addURIToQueue(const std::string& uri, const std::string& metadata) {
+    return buildSoapRequest(services::AVTransport, "AddURIToQueue",
+                            {{"InstanceID", "0"},
+                             {"EnqueuedURI", uri},
+                             {"EnqueuedURIMetaData", metadata},
+                             {"DesiredFirstTrackNumberEnqueued", "0"},
+                             {"EnqueueAsNext", "0"}});
+}
+
+std::string queueUri(const std::string& coordinatorUuid) { return "x-rincon-queue:" + coordinatorUuid + "#0"; }
+
 TransportState parseTransportState(const std::string& text) {
     if (text == "PLAYING") return TransportState::Playing;
     if (text == "PAUSED_PLAYBACK") return TransportState::Paused;

@@ -399,14 +399,16 @@ void test_mode_long_press_opens_and_closes_menu() {
     TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
 }
 
-void test_mode_menu_selection_skips_disabled_and_wraps() {
+void test_mode_menu_selection_wraps() {
     ModeController m;
     m.onLongPress(0);  // Spulen
-    // Favoriten sind noch deaktiviert: Spulen -> Räume -> Schließen -> Spulen
     TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Rooms), m.onDetents(+1, 10, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 20, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 30, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 40, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Favorites), m.onDetents(+1, 20, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 30, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 40, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 50, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Favorites), m.onDetents(+7, 60, trackCtx()).value);  // 7 ≡ 3
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-7, 70, trackCtx()).value);
     TEST_ASSERT_TRUE(m.mode() == Mode::Menu);  // Drehen im Menü ändert keine Lautstärke
 }
 
@@ -546,6 +548,62 @@ void test_mode_rooms_not_available_without_rooms() {
     auto a = m.onShortPress(20, roomsCtx(0, 0));
     TEST_ASSERT_TRUE(a.type == Act::NotAvailable);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Rooms), a.value);
+}
+
+static ModeController::Context favCtx(int count) {
+    ModeController::Context c = trackCtx();
+    c.favoriteCount = count;
+    return c;
+}
+
+/** Menü öffnen und „Favoriten“ (zwei Schritte im Uhrzeigersinn) wählen. */
+static ModeController::Action openFavorites(ModeController& m, uint32_t t, int count) {
+    m.onLongPress(t);
+    m.onDetents(+2, t + 10, favCtx(count));
+    return m.onShortPress(t + 20, favCtx(count));
+}
+
+void test_mode_favorite_picker_select_and_remember() {
+    ModeController m;
+    auto a = openFavorites(m, 0, 12);
+    TEST_ASSERT_TRUE(a.type == Act::FavoritePickerOpened);
+    TEST_ASSERT_EQUAL_INT(0, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::FavoritePicker);
+    TEST_ASSERT_EQUAL_INT(3, m.onDetents(+3, 1000, favCtx(12)).value);
+    a = m.onShortPress(2000, favCtx(12));
+    TEST_ASSERT_TRUE(a.type == Act::FavoriteSelected);
+    TEST_ASSERT_EQUAL_INT(3, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+
+    // Beim nächsten Öffnen steht die Auswahl wieder auf dem zuletzt gewählten
+    a = openFavorites(m, 3000, 12);
+    TEST_ASSERT_EQUAL_INT(3, a.value);
+    // Liste inzwischen kürzer: Auswahl rückt ans Ende
+    m.onLongPress(4000);
+    a = openFavorites(m, 5000, 2);
+    TEST_ASSERT_EQUAL_INT(1, a.value);
+}
+
+void test_mode_favorite_picker_clamped_cancel_timeout() {
+    ModeController m(10000);
+    openFavorites(m, 0, 4);
+    TEST_ASSERT_TRUE(m.onDetents(-1, 100, favCtx(4)).type == Act::None);  // Anfang
+    TEST_ASSERT_EQUAL_INT(3, m.onDetents(+10, 200, favCtx(4)).value);      // Ende
+    TEST_ASSERT_TRUE(m.onLongPress(300).type == Act::FavoritePickerCancelled);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+
+    openFavorites(m, 400, 4);
+    TEST_ASSERT_TRUE(m.tick(10419).type == Act::None);
+    TEST_ASSERT_TRUE(m.tick(10420).type == Act::FavoritePickerCancelled);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+void test_mode_favorites_not_available_without_list() {
+    ModeController m;
+    auto a = openFavorites(m, 0, 0);
+    TEST_ASSERT_TRUE(a.type == Act::NotAvailable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Favorites), a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
 }
 
 // --- ImageOps (Albumcover) --------------------------------------------------------
@@ -777,7 +835,7 @@ int main(int, char**) {
     RUN_TEST(test_progress_millis_wraparound);
     RUN_TEST(test_mode_normal_maps_ring_and_button);
     RUN_TEST(test_mode_long_press_opens_and_closes_menu);
-    RUN_TEST(test_mode_menu_selection_skips_disabled_and_wraps);
+    RUN_TEST(test_mode_menu_selection_wraps);
     RUN_TEST(test_mode_menu_close_item);
     RUN_TEST(test_mode_menu_times_out);
     RUN_TEST(test_mode_scrub_starts_at_current_position);
@@ -791,6 +849,9 @@ int main(int, char**) {
     RUN_TEST(test_mode_room_picker_moves_clamped_and_selects);
     RUN_TEST(test_mode_room_picker_cancel_and_timeout);
     RUN_TEST(test_mode_rooms_not_available_without_rooms);
+    RUN_TEST(test_mode_favorite_picker_select_and_remember);
+    RUN_TEST(test_mode_favorite_picker_clamped_cancel_timeout);
+    RUN_TEST(test_mode_favorites_not_available_without_list);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

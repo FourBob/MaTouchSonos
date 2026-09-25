@@ -1,5 +1,5 @@
-// Fernbedienung – Stand Schritt 6: Now Playing mit Cover, Lautstärke, Play/Pause, Titel wechseln,
-// Ringmenü, Spulen und Raumwahl (Anlage wird automatisch gefunden).
+// Fernbedienung – Stand Schritt 7: Now Playing mit Cover, Lautstärke, Play/Pause, Titel wechseln,
+// Ringmenü, Spulen, Raumwahl (Anlage wird automatisch gefunden) und Favoriten.
 //
 // Ablauf pro Schleifendurchlauf (Kern 1):
 //   Drehring/Taste -> ModeController (Normal / Menü / Spulen) entscheidet, was sie bedeuten:
@@ -9,6 +9,7 @@
 //     Menü:   Drehring wählt, kurz öffnet, lang schließt
 //     Spulen: Drehring verschiebt die Zielposition, kurz -> SonosLink.seek, lang bricht ab
 //     Raum:   Drehring wählt, kurz -> SonosLink.selectRoom (+ im NVS gemerkt), lang bricht ab
+//     Favorit: Drehring wählt, kurz -> SonosLink.playFavorite, lang bricht ab
 //   Wischen    -> rechts: nächster, links: vorheriger Titel              -> SonosLink.transport(Next/Previous)
 //   SonosLink-Ereignisse + Now-Playing-Momentaufnahme        -> Controller -> Anzeige
 // Das Netzwerk läuft in der SonosLink-Task auf Kern 0 und blockiert die UI nie.
@@ -67,6 +68,9 @@ char roomName[56] = "";          // aktiver Raum, steht in der Statuszeile
 Preferences prefs;               // NVS: zuletzt gewählter Raum (Schlüssel "room")
 
 uint32_t coverVersion = 0;       // zuletzt angezeigtes Cover
+
+net::FavoritesInfo* favorites = nullptr;  // PSRAM (~10 KB), in setup() angelegt
+uint32_t favoritesVersion = 0;
 
 net::NowPlayingInfo nowPlaying;  // letzte Momentaufnahme
 bool hasNowPlaying = false;      // false nach Verbindungsverlust, bis eine neue Abfrage eintrifft
@@ -226,6 +230,15 @@ void handleNetEvent(const net::Event& e, uint32_t now) {
             showUnknownState();
             setConnectionStatus(e.text, S::Error);
             break;
+        case T::FavoriteStarted: {
+            char text[80];
+            snprintf(text, sizeof(text), LV_SYMBOL_PLAY "  %s", e.text);
+            showMessage(text, S::Ok, kMessageMs, now);
+            break;
+        }
+        case T::FavoriteFailed:
+            showMessage(e.text, S::Error, kMessageMs, now);
+            break;
     }
 }
 
@@ -266,13 +279,33 @@ app::ModeController::Context modeContext(uint32_t now) {
     c.durationSec = progress.durationSec();
     c.roomCount = rooms.count;
     c.currentRoom = rooms.selected;
+    c.favoriteCount = favorites ? favorites->count : 0;
     return c;
 }
 
 void showRoomPicker(int index) {
     const char* names[net::kMaxRooms];
     for (int i = 0; i < rooms.count; ++i) names[i] = rooms.rooms[i].display;
-    screen.showRoomPicker(names, rooms.count, index, rooms.selected);
+    screen.showPicker(LV_SYMBOL_HOME "  Raum wählen", names, rooms.count, index, rooms.selected, "");
+}
+
+void showFavoritePicker(int index) {
+    if (!favorites || favorites->count == 0) return;
+    if (index >= favorites->count) index = favorites->count - 1;
+    const char* names[net::kMaxFavorites];
+    for (int i = 0; i < favorites->count; ++i) names[i] = favorites->items[i].title;
+    screen.showPicker(LV_SYMBOL_AUDIO "  Favorit abspielen", names, favorites->count, index, -1,
+                      favorites->items[index].detail);
+}
+
+void playFavorite(int index, uint32_t now) {
+    if (!favorites || index < 0 || index >= favorites->count) return;
+    const net::FavoriteEntry& f = favorites->items[index];
+    net::SonosLink::playFavorite(index, f.title);
+    char text[80];
+    snprintf(text, sizeof(text), "Starte %s …", f.title);
+    showMessage(text, NowPlayingScreen::Status::Info, kMessageMs, now);
+    Serial.printf("FAVORIT gewählt: %s\n", f.title);
 }
 
 void selectRoom(int index, uint32_t now) {
@@ -309,6 +342,10 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
             togglePlayPause(now);
             break;
         case T::MenuOpened:
+            net::SonosLink::refreshFavorites();  // im Hintergrund – bis „Favoriten“ gewählt ist, meist fertig
+            screen.showMenu(a.value);
+            Serial.printf("MENU %s\n", menuItemName(a.value));
+            break;
         case T::MenuMoved:
             screen.showMenu(a.value);
             Serial.printf("MENU %s\n", menuItemName(a.value));
@@ -342,19 +379,36 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
             showRoomPicker(a.value);
             break;
         case T::RoomSelected:
-            screen.hideRoomPicker();
+            screen.hidePicker();
             selectRoom(a.value, now);
             break;
         case T::RoomPickerCancelled:
-            screen.hideRoomPicker();
+            screen.hidePicker();
+            break;
+        case T::FavoritePickerOpened:
+        case T::FavoritePickerMoved:
+            showFavoritePicker(a.value);
+            break;
+        case T::FavoriteSelected:
+            screen.hidePicker();
+            playFavorite(a.value, now);
+            break;
+        case T::FavoritePickerCancelled:
+            screen.hidePicker();
             break;
         case T::NotAvailable: {
             screen.hideMenu();
             const auto item = static_cast<app::ModeController::MenuItem>(a.value);
-            const char* text = item == app::ModeController::MenuItem::Scrub
-                                   ? "Spulen geht nur bei Titeln mit bekannter Länge"
-                                   : (item == app::ModeController::MenuItem::Rooms ? "Noch keine Räume gefunden"
-                                                                                   : "Favoriten kommen in Schritt 7");
+            const char* text = "";
+            switch (item) {
+                case app::ModeController::MenuItem::Scrub: text = "Spulen geht nur bei Titeln mit bekannter Länge"; break;
+                case app::ModeController::MenuItem::Rooms: text = "Noch keine Räume gefunden"; break;
+                case app::ModeController::MenuItem::Favorites:
+                    text = favorites && favorites->loaded ? "Keine Favoriten – in der Sonos-App anlegen"
+                                                          : "Favoriten werden noch geladen …";
+                    break;
+                case app::ModeController::MenuItem::Close: break;
+            }
             showMessage(text, NowPlayingScreen::Status::Info, kMessageMs, now);
             break;
         }
@@ -364,7 +418,7 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
 }  // namespace
 
 void setup() {
-    diag::logBootInfo("Fernbedienung (Schritt 6)");
+    diag::logBootInfo("Fernbedienung (Schritt 7)");
 
     if (!hal::Display::begin()) {
         Serial.println(F("FEHLER: Display-Initialisierung fehlgeschlagen"));
@@ -385,6 +439,7 @@ void setup() {
                   std::strlen(SONOS_ROOM) ? SONOS_ROOM : "(keiner)",
                   savedRoom.length() ? savedRoom.c_str() : "(keiner)",
                   std::strlen(SONOS_IP) ? SONOS_IP : "(keine, nur SSDP)");
+    favorites = static_cast<net::FavoritesInfo*>(ps_calloc(1, sizeof(net::FavoritesInfo)));
     net::CoverLoader::begin();
     net::SonosLink::begin(WIFI_SSID, WIFI_PASS, SONOS_ROOM, savedRoom.c_str(), SONOS_IP);
 }
@@ -426,6 +481,13 @@ void loop() {
             int idx = modes.roomPickerIndex();
             if (idx >= rooms.count) idx = rooms.count - 1;
             if (idx >= 0) showRoomPicker(idx);
+        }
+    }
+    if (favorites && net::SonosLink::takeFavorites(favoritesVersion, *favorites)) {
+        favoritesVersion = favorites->version;
+        if (modes.mode() == app::ModeController::Mode::FavoritePicker) {
+            if (favorites->count > 0) showFavoritePicker(modes.favoritePickerIndex());
+            else apply(modes.onLongPress(now), now);  // Liste leer geworden: Auswahl schließen
         }
     }
     if (net::SonosLink::takeNowPlaying(nowPlayingVersion, nowPlaying)) {

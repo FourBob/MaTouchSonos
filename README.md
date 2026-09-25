@@ -8,7 +8,7 @@ Sie braucht keine Cloud, kein Konto und keinen Zusatzserver.
 
 [![CI](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml/badge.svg)](https://github.com/FourBob/MaTouchSonos/actions/workflows/ci.yml)
 
-> **Projektstand:** Schritt 6 von 9: Now Playing mit Albumcover, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen und Raumwahl.
+> **Projektstand:** Schritt 7 von 9: Now Playing mit Albumcover, Lautstärke, Play/Pause, Titelwechsel, Ringmenü, Spulen, Raumwahl und Favoriten.
 > Die Sonos-Funktionen entstehen Schritt für Schritt, siehe [Entwicklungsplan](docs/ENTWICKLUNGSPLAN.md).
 
 ---
@@ -21,7 +21,7 @@ Die Bedienung ist auf die runde Form und den Drehring ausgelegt:
 |---|---|
 | **Ring drehen** | Lautstärke (Bogen am Rand zeigt den Wert) |
 | **Kurz drücken** | Play / Pause |
-| **Lang drücken** | Ringmenü: **Spulen**, **Räume**, **Favoriten** (ab Schritt 7), **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
+| **Lang drücken** | Ringmenü: **Spulen**, **Räume**, **Favoriten**, **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
 | **Räume** | Drehrad mit allen Räumen und Gruppen („Küche + 2“). Drücken schaltet um, der Raum wird für den nächsten Start gemerkt. |
 | **Nach rechts / links wischen** | Nächster / vorheriger Titel |
 | **Spulen** | Der Ring verschiebt die Zielposition auf dem Fortschrittsring (1 % pro Klick, mindestens 5 s), Drücken springt dorthin, Langdruck bricht ab |
@@ -39,8 +39,8 @@ Außen läuft der Fortschrittsbogen.
 | 3 | Now Playing (Titel, Fortschritt) und Titelwechsel per Wischen | ✅ getestet |
 | 4 | Ringmenü und Scrubbing | ✅ getestet |
 | 5 | Räume automatisch finden und wählen | ✅ getestet |
-| 6 | Albumcover (je nach Dienst: Speaker-Proxy, HTTPS, JPEG/PNG) | 🧪 wartet auf Geräte-Test |
-| 7 | Sonos-Favoriten und Radio starten | ⏳ |
+| 6 | Albumcover (je nach Dienst: Speaker-Proxy, HTTPS, JPEG/PNG) | ✅ getestet |
+| 7 | Sonos-Favoriten und Radio starten | 🧪 wartet auf Geräte-Test |
 | 8 | Gruppen verwalten, Gruppenlautstärke | ⏳ |
 | 9 | Live-Updates, Energiesparen, Feinschliff | ⏳ |
 
@@ -211,7 +211,7 @@ Mehr dazu in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 | Bleibt bei „WLAN verbinden …“ | SSID/Passwort prüfen. Nur 2,4 GHz wird unterstützt. |
 | Kein Cover bei einem Dienst | Adresse mit `sonos_probe.py <IP> nowplaying` ansehen und mit `sonos_probe.py - cover '<Adresse>'` prüfen. Progressive JPEGs zeigt das Gerät nur unscharf, WebP/GIF gar nicht. Das Log zeigt `COVER … nicht darstellbar: …`. |
 | Wischen wechselt den Titel nicht | Bei Radio, TV und Line-In gibt es keinen nächsten Titel (Hinweis „Bei dieser Quelle nicht möglich“). Sonst: zügig über mindestens ein Drittel des Displays wischen. |
-| „Nichts zum Abspielen“ | Die Warteschlange des Speakers ist leer. Erst in der Sonos-App etwas starten. Ab Schritt 7 geht das mit Favoriten direkt am Gerät. |
+| „Nichts zum Abspielen“ | Die Warteschlange des Speakers ist leer. Im Ringmenü einen Favoriten starten oder in der Sonos-App etwas abspielen. |
 | „Speaker nicht erreichbar“ | Speaker-IP prüfen: `python3 tools/sonos_probe.py <IP> info` muss den Raumnamen zeigen. |
 | Farben vertauscht (Rot ↔ Blau) | Die drei Farbbalken oben auf dem Testbild prüfen und das Ergebnis melden. Die Pins in `board_config.h` werden dann angepasst. |
 | Kein serielles Log | Der USB-C-Port ist der native USB des ESP32-S3. Nach dem Flashen einmal RESET drücken und den Monitor neu verbinden. |

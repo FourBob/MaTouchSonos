@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–5 ✅ abgeschlossen. Schritt 6 umgesetzt, wartet auf den Geräte-Test.
+> **Stand:** Schritt 0–6 ✅ abgeschlossen. Schritt 7 umgesetzt, wartet auf den Geräte-Test.
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -246,7 +246,7 @@ wechselt Now Playing und Lautstärke auf diesen Raum. Nach Neustart ist der letz
 
 ---
 
-### Schritt 6 – Albumcover 🧪
+### Schritt 6 – Albumcover ✅
 
 **Ziel:** Now Playing zeigt das Cover als runden Hintergrund.
 
@@ -274,7 +274,7 @@ Wechsel mit kurzer Überblendung; Platzhalter, wenn es kein Cover gibt.
 
 ---
 
-### Schritt 7 – Favoriten und Radio starten
+### Schritt 7 – Favoriten und Radio starten 🧪
 
 **Ziel:** Sonos-Favoriten aus dem Ringmenü abspielen.
 
@@ -285,7 +285,10 @@ Wechsel mit kurzer Überblendung; Platzhalter, wenn es kein Cover gibt.
 - Abspielen: `SetAVTransportURI` mit den mitgelieferten Metadaten (`res` + `resMD`), dann `Play`;
   Container (Playlists/Alben) über Queue: `RemoveAllTracksFromQueue`, `AddURIToQueue`, Queue abspielen
 - Liste cachen, beim Öffnen im Hintergrund aktualisieren
-- Optional: Favoriten-Cover als kleine Icons
+- Optional: Favoriten-Cover als kleine Icons (verschoben auf Schritt 9)
+- **Umsetzung:** Die Liste enthält auf dem Gerät nur Name und Dienst (PSRAM). Adresse und Metadaten
+  (je Favorit bis ~2 KB, u. a. Dienst-Token) holt die Task erst beim Abspielen per `Browse(Position, 1)`
+  und prüft dabei den Namen – so bleibt der interne RAM frei, und eine geänderte Liste fällt auf.
 
 **Tests**
 - T1: Browse-Antwort parsen (Radio, Playlist, Album, Einzeltitel); Entscheidung Direkt-URI vs. Queue

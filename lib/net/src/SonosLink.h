@@ -18,6 +18,8 @@ struct Event {
         TransportError,  ///< Befehl abgelehnt: value = UPnP-Fehlercode (0 = unbekannt), text = Beschreibung
         SpeakerOk,       ///< Speaker antwortet wieder
         SpeakerError,    ///< Speaker wiederholt nicht erreichbar: text = Fehlerbeschreibung
+        FavoriteStarted, ///< Favorit läuft an: text = Name
+        FavoriteFailed,  ///< Favorit ließ sich nicht starten: text = Grund
     };
     Type type;
     int value;
@@ -59,18 +61,37 @@ struct RoomsInfo {
 };
 
 /**
+ * Sonos-Favoriten – nur was die Anzeige braucht. Adresse und Metadaten holt die Task erst
+ * beim Abspielen (einzeln), damit 100 Favoriten nicht dauerhaft Speicher belegen.
+ * Groß (~10 KB): Kopien davon gehören in den PSRAM.
+ */
+constexpr int kMaxFavorites = 100;
+struct FavoriteEntry {
+    char title[64];
+    char detail[32];     ///< z. B. „TuneIn“, „Spotify-Playlist“ (je nach Dienst, oft leer)
+    int16_t position;    ///< Position in der Favoritenliste des Speakers (für Browse)
+};
+struct FavoritesInfo {
+    uint32_t version = 0;
+    int count = 0;
+    bool loaded = false;  ///< mindestens einmal erfolgreich gelesen (auch wenn leer)
+    FavoriteEntry items[kMaxFavorites];
+};
+
+/**
  * Verbindung zur Sonos-Anlage (ab Schritt 5 mit automatischer Suche und Raumwahl).
  *
  * Läuft als eigene FreeRTOS-Task auf Kern 0, damit Netzwerk-Wartezeiten die
  * Oberfläche (Kern 1) nie blockieren. Kommunikation nur über Queues bzw.
  * mutex-geschützte Momentaufnahmen:
  *
- *   UI  ── setVolume() / transport() / seek() / selectRoom() ──▶  Task
- *   UI  ◀── pollEvent() / takeNowPlaying() / takeRooms() ───────  Task
+ *   UI  ── setVolume() / transport() / seek() / selectRoom() / playFavorite() ──▶  Task
+ *   UI  ◀── pollEvent() / takeNowPlaying() / takeRooms() / takeFavorites() ─────  Task
  *
  * Ablauf der Task: WLAN verbinden → Anlage suchen (bekannte IPs, sonst SSDP) →
  * Topologie lesen → Raum auflösen (Befehle immer an den Gruppen-Koordinator) →
  * alle 1,5 s Zustand/Titel/Lautstärke abfragen, alle 30 s die Topologie.
+ * Die Favoriten werden nach dem Verbinden gelesen und auf Wunsch (refreshFavorites) erneuert.
  * Einzelne Aussetzer werden still wiederholt; nach mehreren Fehlschlägen in Folge
  * wird die Anlage neu gesucht (z. B. wenn ein Speaker eine neue IP bekommen hat).
  */
@@ -98,6 +119,18 @@ public:
 
     /** Auf einen anderen Raum umschalten (UUID aus RoomsInfo, nicht blockierend). */
     static void selectRoom(const char* uuid);
+
+    /** Favoritenliste im Hintergrund neu lesen (z. B. beim Öffnen des Menüs; höchstens alle 10 s). */
+    static void refreshFavorites();
+
+    /**
+     * Favorit im aktiven Raum abspielen (nicht blockierend). `title` dient als Kontrolle,
+     * falls sich die Liste inzwischen geändert hat.
+     */
+    static void playFavorite(int index, const char* title);
+
+    /** Favoriten kopieren, falls es seit `lastVersion` eine neue Liste gibt. */
+    static bool takeFavorites(uint32_t lastVersion, FavoritesInfo& out);
 
     /** Nächste Meldung abholen (nicht blockierend). @return false, wenn keine vorliegt. */
     static bool pollEvent(Event& out);

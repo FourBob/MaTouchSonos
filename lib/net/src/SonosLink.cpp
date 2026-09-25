@@ -6,12 +6,14 @@
 #include <WiFiUdp.h>
 
 #include <algorithm>
+#include <atomic>
 #include <string>
 #include <vector>
 
 #include "AVTransport.h"
 #include "AlbumArt.h"
 #include "CoverLoader.h"
+#include "Favorites.h"
 #include "NowPlaying.h"
 #include "RenderingControl.h"
 #include "Soap.h"
@@ -34,6 +36,9 @@ constexpr uint16_t kSsdpLocalPort = 50505;
 constexpr int kFailuresBeforeError = 3;          // so viele Aussetzer in Folge bis zur Fehlermeldung
 constexpr uint32_t kWifiCheckMs = 500;
 constexpr int kUpnpTransitionNotAvailable = 701;
+constexpr uint16_t kBrowseTimeoutMs = 3000;      // Favoritenliste kann einige 10 KB groß sein
+constexpr int kFavoritesPageSize = 50;
+constexpr uint32_t kFavoritesMinIntervalMs = 10000;  // Favoriten höchstens so oft neu lesen
 
 const char* gSsid = nullptr;
 const char* gPassword = nullptr;
@@ -48,16 +53,35 @@ struct Command {
 struct RoomRequest {
     char uuid[40];
 };
+struct FavoriteRequest {
+    int index;
+    char title[64];
+};
 
 QueueHandle_t gVolumeQueue = nullptr;     // int, Länge 1 (xQueueOverwrite)
 QueueHandle_t gTransportQueue = nullptr;  // Command, Länge 4
 QueueHandle_t gRoomQueue = nullptr;       // RoomRequest, Länge 1 (xQueueOverwrite)
 QueueHandle_t gEventQueue = nullptr;      // Event, Länge 16
+QueueHandle_t gFavoriteQueue = nullptr;   // FavoriteRequest, Länge 1 (xQueueOverwrite)
+std::atomic<bool> gFavoritesRefresh{false};
 
 SemaphoreHandle_t gNowPlayingMutex = nullptr;
 NowPlayingInfo gNowPlaying;  // geschützt durch gNowPlayingMutex
 SemaphoreHandle_t gRoomsMutex = nullptr;
 RoomsInfo gRooms;            // geschützt durch gRoomsMutex
+SemaphoreHandle_t gFavoritesMutex = nullptr;
+FavoritesInfo* gFavorites = nullptr;  // PSRAM, geschützt durch gFavoritesMutex
+FavoritesInfo* gFavoritesScratch = nullptr;  // PSRAM, nur die Task: neue Liste wird hier aufgebaut
+
+/** Wie strlcpy, schneidet aber nie mitten in einem UTF-8-Zeichen ab (sonst zeigt LVGL Müll). */
+void copyUtf8(char* dst, const std::string& src, size_t size) {
+    size_t n = src.size() < size - 1 ? src.size() : size - 1;
+    if (n < src.size()) {
+        while (n > 0 && (static_cast<unsigned char>(src[n]) & 0xC0) == 0x80) --n;  // Folgebyte: zurück zum Anfang
+    }
+    memcpy(dst, src.data(), n);
+    dst[n] = '\0';
+}
 
 void post(Event::Type type, int value = 0, const char* text = "") {
     Event e{};
@@ -74,10 +98,11 @@ void post(Event::Type type, int value = 0, const char* text = "") {
 // ---------------------------------------------------------------------------
 
 /** Führt eine SOAP-Anfrage an `ip` aus. body enthält die Antwort (auch im Fehlerfall). */
-sonos::SoapResult call(const std::string& ip, const sonos::SoapRequest& req, std::string& body) {
+sonos::SoapResult call(const std::string& ip, const sonos::SoapRequest& req, std::string& body,
+                       uint16_t timeoutMs = kHttpTimeoutMs) {
     HTTPClient http;
     http.setConnectTimeout(kHttpConnectTimeoutMs);
-    http.setTimeout(kHttpTimeoutMs);
+    http.setTimeout(timeoutMs);
     http.setReuse(false);
 
     const String url = String("http://") + ip.c_str() + ":" + kSonosPort + req.path.c_str();
@@ -99,11 +124,12 @@ sonos::SoapResult call(const std::string& ip, const sonos::SoapRequest& req, std
 }
 
 /** Wie call(), aber bei einem Verbindungsfehler (Aussetzer) sofort ein zweites Mal. */
-sonos::SoapResult callWithRetry(const std::string& ip, const sonos::SoapRequest& req, std::string& body) {
-    sonos::SoapResult r = call(ip, req, body);
+sonos::SoapResult callWithRetry(const std::string& ip, const sonos::SoapRequest& req, std::string& body,
+                                uint16_t timeoutMs = kHttpTimeoutMs) {
+    sonos::SoapResult r = call(ip, req, body, timeoutMs);
     if (!r.ok && r.httpStatus <= 0) {
         Serial.printf("SONOS Aussetzer (%s) – wiederhole\n", r.error.c_str());
-        r = call(ip, req, body);
+        r = call(ip, req, body, timeoutMs);
     }
     return r;
 }
@@ -196,6 +222,10 @@ struct Link {
     std::string lastTrackUri;       // für GetMediaInfo nur bei Quellenwechsel
     sonos::MediaInfo media;
     bool hasMedia = false;
+
+    // Favoriten
+    bool favoritesLoaded = false;
+    uint32_t favoritesTriedAt = 0;  // 0 = noch nie
 
     bool hasTarget() const { return !targetIp.empty(); }
 
@@ -428,6 +458,160 @@ void sendTransport(Link& link, const Command& command) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Favoriten (Schritt 7)
+// ---------------------------------------------------------------------------
+
+/** Favoritenliste lesen (seitenweise) und für die UI veröffentlichen. */
+bool loadFavorites(Link& link) {
+    if (!gFavorites || !gFavoritesScratch) return false;
+    FavoritesInfo& fresh = *gFavoritesScratch;
+    fresh.count = 0;
+    std::string body;
+    int start = 0;
+    int total = 0;
+    const uint32_t began = millis();
+    do {
+        const sonos::SoapResult r =
+            callWithRetry(link.targetIp, sonos::favorites::browse(start, kFavoritesPageSize), body, kBrowseTimeoutMs);
+        int seen = 0;
+        const bool parsed = r.ok && sonos::favorites::parseBrowse(
+                                        body,
+                                        [&](int position, sonos::Favorite&& f) {
+                                            ++seen;
+                                            if (f.title.empty() || fresh.count >= kMaxFavorites) return;
+                                            FavoriteEntry& e = fresh.items[fresh.count++];
+                                            copyUtf8(e.title, f.title, sizeof(e.title));
+                                            copyUtf8(e.detail, f.description, sizeof(e.detail));
+                                            e.position = static_cast<int16_t>(start + position);
+                                        },
+                                        total);
+        if (!parsed) {
+            Serial.printf("FAVORITEN lesen fehlgeschlagen: %s\n",
+                          r.ok ? "unerwartete Antwort" : r.error.c_str());
+            return false;
+        }
+        if (seen == 0) break;
+        start += seen;
+    } while (start < total && fresh.count < kMaxFavorites);
+
+    xSemaphoreTake(gFavoritesMutex, portMAX_DELAY);
+    const uint32_t version = gFavorites->version + 1;
+    memcpy(gFavorites, &fresh, sizeof(FavoritesInfo));
+    gFavorites->version = version;
+    gFavorites->loaded = true;
+    xSemaphoreGive(gFavoritesMutex);
+    Serial.printf("FAVORITEN: %d geladen (%lu ms)%s\n", fresh.count, static_cast<unsigned long>(millis() - began),
+                  total > kMaxFavorites ? " – Liste gekürzt" : "");
+    return true;
+}
+
+void favoriteFailed(const char* title, const char* reason) {
+    Serial.printf("FAVORIT „%s“ FEHLER: %s\n", title, reason);
+    post(Event::Type::FavoriteFailed, 0, reason);
+}
+
+/** Einen Schritt beim Starten ausführen; bei Fehler melden. */
+bool favoriteStep(Link& link, const char* title, const char* step, const sonos::SoapRequest& req) {
+    std::string body;
+    const sonos::SoapResult r = callWithRetry(link.targetIp, req, body);
+    if (r.ok) return true;
+    char reason[64];
+    if (r.upnpErrorCode == 800) {
+        snprintf(reason, sizeof(reason), "Speaker ist nicht Gruppen-Koordinator");
+    } else if (r.upnpErrorCode != 0) {
+        snprintf(reason, sizeof(reason), "Abgelehnt (%s, Fehler %d)", step, r.upnpErrorCode);
+    } else {
+        snprintf(reason, sizeof(reason), "%s: %s", step, r.error.c_str());
+    }
+    favoriteFailed(title, reason);
+    if (r.httpStatus <= 0) link.failed(step, r.error);
+    return false;
+}
+
+/**
+ * Favorit abspielen: Adresse und Metadaten einzeln nachladen, dann
+ *  - Radio/Line-In/TV: SetAVTransportURI + Play
+ *  - Playlist/Album/Titel: Warteschlange leeren, Favorit anhängen, Warteschlange abspielen
+ */
+void startFavorite(Link& link, const FavoriteRequest& req) {
+    if (!gFavorites) return;
+    FavoriteEntry entry{};
+    bool known = false;
+    xSemaphoreTake(gFavoritesMutex, portMAX_DELAY);
+    if (req.index >= 0 && req.index < gFavorites->count && strcmp(gFavorites->items[req.index].title, req.title) == 0) {
+        entry = gFavorites->items[req.index];
+        known = true;
+    }
+    xSemaphoreGive(gFavoritesMutex);
+    if (!known) {
+        favoriteFailed(req.title, "Favoriten haben sich geändert – bitte neu wählen");
+        gFavoritesRefresh = true;
+        return;
+    }
+
+    std::string body;
+    sonos::SoapResult r = callWithRetry(link.targetIp, sonos::favorites::browse(entry.position, 1), body, kBrowseTimeoutMs);
+    sonos::Favorite fav;
+    bool found = false;
+    int total = 0;
+    if (r.ok) {
+        sonos::favorites::parseBrowse(
+            body,
+            [&](int, sonos::Favorite&& f) {
+                char title[sizeof(entry.title)];
+                copyUtf8(title, f.title, sizeof(title));
+                if (!found && strcmp(title, entry.title) == 0) {
+                    fav = std::move(f);
+                    found = true;
+                }
+            },
+            total);
+    }
+    if (!found) {
+        favoriteFailed(entry.title, r.ok ? "Favoriten haben sich geändert – bitte neu wählen" : r.error.c_str());
+        if (r.ok) gFavoritesRefresh = true;
+        if (r.httpStatus <= 0) link.failed("Browse", r.error);
+        return;
+    }
+
+    const sonos::PlayMethod method = sonos::favorites::playMethod(fav);
+    Serial.printf("FAVORIT „%s“ (%s): %s\n", entry.title,
+                  method == sonos::PlayMethod::Direct  ? "direkt"
+                  : method == sonos::PlayMethod::Queue ? "über die Warteschlange"
+                                                       : "nicht abspielbar",
+                  fav.uri.c_str());
+    if (method == sonos::PlayMethod::Unsupported) {
+        favoriteFailed(entry.title, "Dieser Favorit lässt sich hier nicht abspielen");
+        return;
+    }
+
+    if (method == sonos::PlayMethod::Direct) {
+        if (!favoriteStep(link, entry.title, "SetAVTransportURI", sonos::avtransport::setAVTransportURI(fav.uri, fav.metadata)))
+            return;
+    } else {
+        if (link.roomIndex < 0 || link.roomIndex >= static_cast<int>(link.groups.size())) {
+            favoriteFailed(entry.title, "Kein Raum gewählt");
+            return;
+        }
+        const std::string queue = sonos::avtransport::queueUri(link.groups[link.roomIndex].coordinatorUuid);
+        if (!favoriteStep(link, entry.title, "RemoveAllTracksFromQueue", sonos::avtransport::removeAllTracksFromQueue()) ||
+            !favoriteStep(link, entry.title, "AddURIToQueue", sonos::avtransport::addURIToQueue(fav.uri, fav.metadata)) ||
+            !favoriteStep(link, entry.title, "SetAVTransportURI", sonos::avtransport::setAVTransportURI(queue, ""))) {
+            return;
+        }
+        // Zum ersten Titel – schlägt fehl, wenn die Warteschlange schon dort steht; egal.
+        call(link.targetIp, sonos::avtransport::seekTrack(1), body);
+    }
+    if (!favoriteStep(link, entry.title, "Play", sonos::avtransport::play())) return;
+
+    Serial.printf("FAVORIT „%s“ läuft\n", entry.title);
+    post(Event::Type::FavoriteStarted, 0, entry.title);
+    link.lastTrackUri.clear();  // neue Quelle: GetMediaInfo neu lesen (Sendername)
+    link.hasMedia = false;
+    link.nextPollAt = millis() + kPollAfterCommandMs;
+}
+
 void task(void*) {
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("MaTouchSonos");
@@ -516,9 +700,26 @@ void task(void*) {
             sendTransport(link, command);
         }
 
+        FavoriteRequest favorite;
+        if (xQueueReceive(gFavoriteQueue, &favorite, 0) == pdTRUE) {
+            if (link.synced) startFavorite(link, favorite);
+            else favoriteFailed(favorite.title, "Speaker noch nicht verbunden");
+        }
+
         // --- Regelmäßig abfragen (Start, Änderungen aus der App, Erholung nach Fehlern) --
         if (static_cast<int32_t>(millis() - link.nextPollAt) >= 0) {
             poll(link);
+        }
+
+        // --- Favoriten: nach dem Verbinden einmal, danach auf Wunsch der UI ---------------
+        if (link.synced) {
+            const bool refresh = gFavoritesRefresh.exchange(false);
+            const uint32_t t = millis();
+            if ((!link.favoritesLoaded || refresh) &&
+                (link.favoritesTriedAt == 0 || t - link.favoritesTriedAt >= kFavoritesMinIntervalMs)) {
+                link.favoritesTriedAt = t == 0 ? 1 : t;
+                if (loadFavorites(link)) link.favoritesLoaded = true;
+            }
         }
     }
 }
@@ -541,9 +742,15 @@ void SonosLink::begin(const char* ssid, const char* password, const char* startR
     gVolumeQueue = xQueueCreate(1, sizeof(int));
     gTransportQueue = xQueueCreate(4, sizeof(Command));
     gRoomQueue = xQueueCreate(1, sizeof(RoomRequest));
+    gFavoriteQueue = xQueueCreate(1, sizeof(FavoriteRequest));
     gEventQueue = xQueueCreate(16, sizeof(Event));
     gNowPlayingMutex = xSemaphoreCreateMutex();
     gRoomsMutex = xSemaphoreCreateMutex();
+    gFavoritesMutex = xSemaphoreCreateMutex();
+    // Favoritenlisten (je ~10 KB) in den PSRAM – interner RAM ist knapp.
+    gFavorites = static_cast<FavoritesInfo*>(ps_calloc(1, sizeof(FavoritesInfo)));
+    gFavoritesScratch = static_cast<FavoritesInfo*>(ps_calloc(1, sizeof(FavoritesInfo)));
+    if (!gFavorites || !gFavoritesScratch) Serial.println(F("FAVORITEN: kein PSRAM – Favoriten deaktiviert"));
     // Kern 0 (dort läuft auch der WLAN-Stack), UI bleibt auf Kern 1.
     // 16 KB Stack: XML-Auswertung von Titel-Metadaten und Topologie (Antwort ~15 KB bei 13 Geräten).
     xTaskCreatePinnedToCore(task, "sonos", 16384, nullptr, 1, nullptr, 0);
@@ -562,6 +769,28 @@ void SonosLink::selectRoom(const char* uuid) {
     RoomRequest r{};
     strlcpy(r.uuid, uuid, sizeof(r.uuid));
     xQueueOverwrite(gRoomQueue, &r);
+}
+
+void SonosLink::refreshFavorites() { gFavoritesRefresh = true; }
+
+void SonosLink::playFavorite(int index, const char* title) {
+    if (!gFavoriteQueue) return;
+    FavoriteRequest r{};
+    r.index = index;
+    strlcpy(r.title, title, sizeof(r.title));
+    xQueueOverwrite(gFavoriteQueue, &r);
+}
+
+bool SonosLink::takeFavorites(uint32_t lastVersion, FavoritesInfo& out) {
+    if (!gFavoritesMutex || !gFavorites) return false;
+    bool changed = false;
+    xSemaphoreTake(gFavoritesMutex, portMAX_DELAY);
+    if (gFavorites->version != lastVersion) {
+        memcpy(&out, gFavorites, sizeof(FavoritesInfo));
+        changed = true;
+    }
+    xSemaphoreGive(gFavoritesMutex);
+    return changed;
 }
 
 bool SonosLink::pollEvent(Event& out) {

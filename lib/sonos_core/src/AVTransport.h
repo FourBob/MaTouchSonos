@@ -30,6 +30,15 @@ SoapRequest getMediaInfo();     ///< Quelle, z. B. Sendername bei Radio (Auswert
 SoapRequest next();
 SoapRequest previous();
 SoapRequest seek(int positionSec);  ///< Springt im aktuellen Titel (Unit REL_TIME)
+SoapRequest seekTrack(int trackNumber);  ///< Springt zu Titel Nr. (1 = erster, Unit TRACK_NR)
+
+/** Quelle setzen (z. B. Radiosender aus einem Favoriten); danach play(). */
+SoapRequest setAVTransportURI(const std::string& uri, const std::string& metadata);
+SoapRequest removeAllTracksFromQueue();
+/** Hängt `uri` (Titel, Album, Playlist) mit seinen Metadaten ans Ende der Warteschlange. */
+SoapRequest addURIToQueue(const std::string& uri, const std::string& metadata);
+/** Adresse der Warteschlange eines Koordinators – als Quelle für setAVTransportURI(). */
+std::string queueUri(const std::string& coordinatorUuid);
 
 /** Liest <CurrentTransportState>. @return false, wenn nicht vorhanden. */
 bool parseTransportInfo(const std::string& body, TransportState& state);

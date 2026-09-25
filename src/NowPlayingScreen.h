@@ -5,7 +5,7 @@
 #include "PlaybackController.h"
 
 /**
- * Now-Playing-Bildschirm (Stand Schritt 5).
+ * Now-Playing-Bildschirm (Stand Schritt 7).
  *
  *        ┌──── Fortschrittsring (360°, beginnt oben) ────┐
  *        │              ▶ / ❚❚  (Zustand)                │
@@ -60,12 +60,16 @@ public:
     void hideScrub();
 
     /**
-     * Raumwahl als Drehrad: markierter Raum groß in der Mitte, Nachbarn darüber/darunter.
-     * @param names   Anzeigenamen aller Räume
-     * @param active  aktuell aktiver Raum (bekommt ein Häkchen)
+     * Auswahlliste als Drehrad (Räume, Favoriten): markierter Eintrag groß in der Mitte,
+     * Nachbarn darüber/darunter.
+     * @param heading  Überschrift (mit Symbol), z. B. LV_SYMBOL_HOME "  Raum wählen"
+     * @param names    Anzeigenamen aller Einträge
+     * @param checked  Eintrag mit Häkchen (z. B. aktiver Raum), −1 = keiner
+     * @param detail   Zusatz zum markierten Eintrag unten (z. B. „TuneIn“), "" = nur „n / m“
      */
-    void showRoomPicker(const char* const* names, int count, int index, int active);
-    void hideRoomPicker();
+    void showPicker(const char* heading, const char* const* names, int count, int index, int checked,
+                    const char* detail);
+    void hidePicker();
 
     /** Regelmäßig aufrufen (blendet die Lautstärke nach Ablauf aus). */
     void tick(uint32_t nowMs);

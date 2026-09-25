@@ -20,6 +20,8 @@ Beispiele:
   python3 tools/sonos_probe.py - discover                       # Speaker im Netz suchen (SSDP)
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-topologie topology   # Räume und Gruppen
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out nowplaying
+  python3 tools/sonos_probe.py 192.168.1.50 favorites list      # Sonos-Favoriten und wie sie starten
+  python3 tools/sonos_probe.py 192.168.1.50 favorites play 3    # Favorit Nr. 3 abspielen (am Koordinator!)
 """
 
 from __future__ import annotations  # Typangaben auch mit Python 3.8/3.9 (macOS-Standard)
@@ -41,7 +43,13 @@ SERVICES = {
                          "urn:schemas-upnp-org:service:RenderingControl:1"),
     "AVTransport": ("/MediaRenderer/AVTransport/Control",
                     "urn:schemas-upnp-org:service:AVTransport:1"),
+    "ContentDirectory": ("/MediaServer/ContentDirectory/Control",
+                         "urn:schemas-upnp-org:service:ContentDirectory:1"),
 }
+
+# Wie sonos::favorites::playMethod (lib/sonos_core/src/Favorites.cpp)
+STREAM_PREFIXES = ("x-sonosapi-stream:", "x-sonosapi-radio:", "x-sonosapi-hls:", "x-rincon-mp3radio:", "hls-radio:",
+                   "aac:", "pndrradio:", "x-rincon-stream:", "x-sonos-htastream:")
 
 
 def build_envelope(urn: str, action: str, args: list[tuple[str, str]]) -> str:
@@ -309,6 +317,88 @@ def cmd_topology(ip: str, args) -> int:
     return 0
 
 
+def browse_favorites(ip: str, start: int, count: int, save: str | None):
+    """Browse FV:2 – liefert (ok, Liste von dicts, Gesamtzahl). Wie sonos::favorites::parseBrowse."""
+    req, status, resp, ms = soap(ip, "ContentDirectory", "Browse",
+                                 [("ObjectID", "FV:2"), ("BrowseFlag", "BrowseDirectChildren"), ("Filter", "*"),
+                                  ("StartingIndex", str(start)), ("RequestedCount", str(count)),
+                                  ("SortCriteria", "")], timeout=5.0)
+    if not report("Browse", req, status, resp, ms, save):
+        return False, [], 0
+    didl = html.unescape(element(resp, "Result") or "")
+    favs = []
+    for m in re.finditer(r"<item[\s>](.*?)</item>", didl, re.S):
+        item = m.group(1)
+        meta = html.unescape(element(item, "resMD") or "")
+        favs.append({
+            "title": html.unescape(element(item, "title") or ""),
+            "description": html.unescape(element(item, "description") or ""),
+            "uri": html.unescape(element(item, "res") or ""),
+            "metadata": meta,
+            "class": html.unescape(element(meta, "class") or "") if meta else "",
+            "art": html.unescape(element(item, "albumArtURI") or ""),
+            "type": html.unescape(element(item, "type") or ""),
+        })
+    return True, favs, int(element(resp, "TotalMatches") or 0)
+
+
+def play_method(fav: dict) -> str:
+    if not fav["uri"]:
+        return "nicht abspielbar"
+    if fav["uri"].startswith(STREAM_PREFIXES) or fav["class"].startswith("object.item.audioItem.audioBroadcast"):
+        return "direkt"
+    return "Warteschlange"
+
+
+def device_uuid(ip: str) -> str:
+    with urllib.request.urlopen(f"http://{ip}:{PORT}/xml/device_description.xml", timeout=3) as resp:
+        xml = resp.read().decode("utf-8", "replace")
+    return (element(xml, "UDN") or "").replace("uuid:", "")
+
+
+def cmd_favorites(ip: str, args) -> int:
+    """Sonos-Favoriten lesen bzw. einen abspielen – genau wie die Firmware (Schritt 7)."""
+    ok, favs, total = browse_favorites(ip, 0, 100, args.save)
+    if not ok:
+        return 1
+    if args.op == "list":
+        print(f"  {total} Favoriten")
+        for i, f in enumerate(favs):
+            print(f"  {i:3}  {f['title']:40.40} {f['description']:22.22} {play_method(f)}")
+            print(f"       {f['uri'][:100]}")
+            print(f"       Art: {f['class'] or '(keine Metadaten)'}  Typ: {f['type']}")
+        return 0
+
+    if not 0 <= args.index < len(favs):
+        print(f"Favorit {args.index} gibt es nicht (0..{len(favs) - 1})")
+        return 1
+    fav = favs[args.index]
+    method = play_method(fav)
+    print(f"  Starte „{fav['title']}“ – {method}")
+    steps = []
+    if method == "direkt":
+        steps.append(("SetAVTransportURI", [("InstanceID", "0"), ("CurrentURI", fav["uri"]),
+                                            ("CurrentURIMetaData", fav["metadata"])]))
+    elif method == "Warteschlange":
+        queue = f"x-rincon-queue:{device_uuid(ip)}#0"
+        steps += [("RemoveAllTracksFromQueue", [("InstanceID", "0")]),
+                  ("AddURIToQueue", [("InstanceID", "0"), ("EnqueuedURI", fav["uri"]),
+                                     ("EnqueuedURIMetaData", fav["metadata"]),
+                                     ("DesiredFirstTrackNumberEnqueued", "0"), ("EnqueueAsNext", "0")]),
+                  ("SetAVTransportURI", [("InstanceID", "0"), ("CurrentURI", queue), ("CurrentURIMetaData", "")])]
+    else:
+        print("  Dieser Favorit hat keine abspielbare Adresse.")
+        return 1
+    steps.append(("Play", [("InstanceID", "0"), ("Speed", "1")]))
+    for action, soap_args in steps:
+        req, status, resp, ms = soap(ip, "AVTransport", action, soap_args)
+        if not report(action, req, status, resp, ms, args.save):
+            if element(resp, "errorCode") == "800":
+                print("  Hinweis: Speaker ist Mitglied einer Gruppe – IP des Gruppen-Koordinators angeben")
+            return 1
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Sonos-Befehle vom PC testen (T3).")
     p.add_argument("ip", help="IP-Adresse des Speakers")
@@ -334,6 +424,12 @@ def main() -> int:
     cv = sub.add_parser("cover", help="Cover-Adresse laden und prüfen (Format, Größe); als IP '-' angeben")
     cv.add_argument("url")
 
+    fv = sub.add_parser("favorites", help="Sonos-Favoriten anzeigen oder einen abspielen")
+    fv_sub = fv.add_subparsers(dest="op", required=True)
+    fv_sub.add_parser("list")
+    fvp = fv_sub.add_parser("play")
+    fvp.add_argument("index", type=int, help="Nummer aus „favorites list“")
+
     gv = sub.add_parser("groupvolume", help="Gruppenlautstärke am Koordinator lesen/setzen")
     gv_sub = gv.add_subparsers(dest="op", required=True)
     gv_sub.add_parser("get")
@@ -344,7 +440,8 @@ def main() -> int:
     try:
         return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport,
                 "nowplaying": cmd_nowplaying, "discover": cmd_discover, "topology": cmd_topology,
-                "groupvolume": cmd_groupvolume, "cover": cmd_cover}[args.command](args.ip, args)
+                "groupvolume": cmd_groupvolume, "cover": cmd_cover,
+                "favorites": cmd_favorites}[args.command](args.ip, args)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         print(f"Speaker unter {args.ip}:{PORT} nicht erreichbar: {e}")
         return 1

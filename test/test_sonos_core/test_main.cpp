@@ -3,6 +3,7 @@
 
 #include <unity.h>
 
+#include <cstring>
 #include <string>
 
 #include "AVTransport.h"
@@ -12,6 +13,8 @@
 #include "fixtures.h"
 #include "fixtures_nowplaying.h"
 #include "fixtures_topology.h"
+#include "fixtures_favorites.h"
+#include "Favorites.h"
 #include "Topology.h"
 #include "AlbumArt.h"
 #include "NowPlaying.h"
@@ -310,6 +313,115 @@ void test_art_resolve_redirect() {
     TEST_ASSERT_EQUAL_STRING("", art::resolveRedirect("https://a.example.com/a.jpg", "b.jpg").c_str());
     TEST_ASSERT_EQUAL_STRING("", art::resolveRedirect("https://a.example.com/a.jpg", "//evil/b.jpg").c_str());
     TEST_ASSERT_EQUAL_STRING("", art::resolveRedirect("https://a.example.com/a.jpg", "").c_str());
+}
+
+// --- Favoriten (Schritt 7) ----------------------------------------------------
+
+void test_favorites_browse_request() {
+    const SoapRequest r = favorites::browse(0);
+    TEST_ASSERT_EQUAL_STRING("/MediaServer/ContentDirectory/Control", r.path.c_str());
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:ContentDirectory:1#Browse\"", r.soapAction.c_str());
+    TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(),
+                                "<ObjectID>FV:2</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag>"
+                                "<Filter>*</Filter><StartingIndex>0</StartingIndex><RequestedCount>100</RequestedCount>"
+                                "<SortCriteria></SortCriteria>"));
+    TEST_ASSERT_NOT_NULL(strstr(favorites::browse(12, 1).body.c_str(),
+                                "<StartingIndex>12</StartingIndex><RequestedCount>1</RequestedCount>"));
+}
+
+void test_favorites_parse_all_kinds() {
+    std::vector<Favorite> favs;
+    int total = -1;
+    TEST_ASSERT_TRUE(favorites::parseBrowse(fixtures::kFavoritesBrowse, favs, total));
+    TEST_ASSERT_EQUAL_INT(7, total);
+    TEST_ASSERT_EQUAL_INT(7, static_cast<int>(favs.size()));
+
+    TEST_ASSERT_EQUAL_STRING("Deutschlandfunk", favs[0].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("TuneIn", favs[0].description.c_str());
+    TEST_ASSERT_EQUAL_STRING("x-sonosapi-stream:s42828?sid=254&flags=8224&sn=0", favs[0].uri.c_str());
+    TEST_ASSERT_EQUAL_STRING("object.item.audioItem.audioBroadcast", favs[0].upnpClass.c_str());
+    TEST_ASSERT_EQUAL_STRING("https://cdn-profiles.tunein.com/s42828/images/logoq.png", favs[0].albumArtUri.c_str());
+    // Metadaten dekodiert und vollständig (inkl. Dienst-Token), damit sie unverändert zurückgehen
+    TEST_ASSERT_EQUAL_INT(0, favs[0].metadata.rfind("<DIDL-Lite ", 0));
+    TEST_ASSERT_NOT_NULL(strstr(favs[0].metadata.c_str(), ">SA_RINCON65031_</desc>"));
+
+    TEST_ASSERT_EQUAL_STRING("Today's Top Hits", favs[1].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("object.container.playlistContainer", favs[1].upnpClass.c_str());
+    TEST_ASSERT_NOT_NULL(strstr(favs[1].metadata.c_str(), "SA_RINCON2311_X_#Svc2311-0-Token"));
+    TEST_ASSERT_EQUAL_STRING("Sonntagsfrühstück", favs[4].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("Nur eine Verknüpfung", favs[6].title.c_str());
+    TEST_ASSERT_TRUE(favs[6].uri.empty());
+}
+
+void test_favorites_visitor_positions() {
+    std::vector<int> positions;
+    std::vector<std::string> titles;
+    int total = 0;
+    TEST_ASSERT_TRUE(favorites::parseBrowse(
+        fixtures::kFavoritesBrowse,
+        [&](int pos, Favorite&& f) {
+            positions.push_back(pos);
+            titles.push_back(f.title);
+        },
+        total));
+    TEST_ASSERT_EQUAL_INT(7, static_cast<int>(positions.size()));
+    for (int i = 0; i < 7; ++i) TEST_ASSERT_EQUAL_INT(i, positions[i]);
+    TEST_ASSERT_EQUAL_STRING("Sonos Radio Hits", titles[5].c_str());
+}
+
+void test_favorites_play_method() {
+    std::vector<Favorite> favs;
+    int total = 0;
+    TEST_ASSERT_TRUE(favorites::parseBrowse(fixtures::kFavoritesBrowse, favs, total));
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[0]) == PlayMethod::Direct);       // TuneIn
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[1]) == PlayMethod::Queue);        // Spotify-Playlist
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[2]) == PlayMethod::Queue);        // Spotify-Album
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[3]) == PlayMethod::Queue);        // Einzeltitel
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[4]) == PlayMethod::Queue);        // Sonos-Playlist
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[5]) == PlayMethod::Direct);       // Sonos Radio
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[6]) == PlayMethod::Unsupported);  // ohne Adresse
+
+    // Unbekanntes Schema, aber als Sender gekennzeichnet → direkt
+    Favorite f;
+    f.uri = "x-sonos-http:station.m3u8?sid=204";
+    f.upnpClass = "object.item.audioItem.audioBroadcast";
+    TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Direct);
+    // Apple-Music-Titel (hls-static) ist kein Radio
+    f.uri = "x-sonosapi-hls-static:song%3a123?sid=204";
+    f.upnpClass = "object.item.audioItem.musicTrack";
+    TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Queue);
+}
+
+void test_favorites_empty_and_invalid() {
+    std::vector<Favorite> favs;
+    int total = -1;
+    TEST_ASSERT_TRUE(favorites::parseBrowse(fixtures::kFavoritesEmpty, favs, total));
+    TEST_ASSERT_EQUAL_INT(0, total);
+    TEST_ASSERT_TRUE(favs.empty());
+    TEST_ASSERT_FALSE(favorites::parseBrowse(fixtures::kFault402, favs, total));
+}
+
+void test_avtransport_queue_requests() {
+    const std::string meta = "<DIDL-Lite><item><dc:title>A & B</dc:title></item></DIDL-Lite>";
+    SoapRequest r = avtransport::setAVTransportURI("x-sonosapi-stream:s1?sid=254&flags=8224", meta);
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\"", r.soapAction.c_str());
+    TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(),
+                                "<InstanceID>0</InstanceID><CurrentURI>x-sonosapi-stream:s1?sid=254&amp;flags=8224</CurrentURI>"
+                                "<CurrentURIMetaData>&lt;DIDL-Lite&gt;&lt;item&gt;&lt;dc:title&gt;A &amp; B&lt;/dc:title&gt;"));
+
+    r = avtransport::addURIToQueue("x-rincon-cpcontainer:1006206c", meta);
+    TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(), "<EnqueuedURI>x-rincon-cpcontainer:1006206c</EnqueuedURI><EnqueuedURIMetaData>"));
+    TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(),
+                                "<DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>0</EnqueueAsNext>"));
+
+    r = avtransport::removeAllTracksFromQueue();
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#RemoveAllTracksFromQueue\"", r.soapAction.c_str());
+
+    r = avtransport::seekTrack(1);
+    TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(), "<Unit>TRACK_NR</Unit><Target>1</Target>"));
+
+    TEST_ASSERT_EQUAL_STRING("x-rincon-queue:RINCON_000E58A0123401400#0",
+                             avtransport::queueUri("RINCON_000E58A0123401400").c_str());
 }
 
 void test_nowplaying_rejects_unexpected_response() {
@@ -612,6 +724,12 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_tv_from_media_when_track_uri_empty);
     RUN_TEST(test_nowplaying_rejects_unexpected_response);
     RUN_TEST(test_art_split_url);
+    RUN_TEST(test_favorites_browse_request);
+    RUN_TEST(test_favorites_parse_all_kinds);
+    RUN_TEST(test_favorites_visitor_positions);
+    RUN_TEST(test_favorites_play_method);
+    RUN_TEST(test_favorites_empty_and_invalid);
+    RUN_TEST(test_avtransport_queue_requests);
     RUN_TEST(test_art_resolve_redirect);
     RUN_TEST(test_avtransport_next_previous_seek_requests);
     RUN_TEST(test_nowplaying_recorded_radio_dlf);

@@ -75,15 +75,16 @@ Touch ◀──I2C-Polling── LVGL-Eingabetreiber
 selbst aus, sondern gibt eine `Action` zurück, die `RemoteApp::apply()` umsetzt. So ist die ganze
 Bedienlogik mit Timeouts und Sonderfällen auf dem PC testbar.
 
-| Modus  | Ring drehen          | kurz drücken         | lang drücken |
-|--------|----------------------|----------------------|--------------|
-| Normal | Lautstärke           | Play/Pause           | Menü öffnen  |
-| Menü   | Eintrag wählen       | Eintrag ausführen    | schließen    |
-| Spulen | Zielposition ändern  | dorthin springen     | abbrechen    |
-| Raum   | Raum wählen          | Raum übernehmen      | abbrechen    |
+| Modus   | Ring drehen          | kurz drücken         | lang drücken |
+|---------|----------------------|----------------------|--------------|
+| Normal  | Lautstärke           | Play/Pause           | Menü öffnen  |
+| Menü    | Eintrag wählen       | Eintrag ausführen    | schließen    |
+| Spulen  | Zielposition ändern  | dorthin springen     | abbrechen    |
+| Raum    | Raum wählen          | Raum übernehmen      | abbrechen    |
+| Favorit | Favorit wählen       | abspielen            | abbrechen    |
 
-Menü, Spulen und Raumwahl schließen sich nach 10 s ohne Eingabe. Noch nicht verfügbare Menüpunkte (Räume,
-Favoriten) werden angezeigt, aber beim Drehen übersprungen.
+Menü, Spulen und Auswahllisten schließen sich nach 10 s ohne Eingabe. Raum- und Favoritenliste sind
+dasselbe Drehrad (`NowPlayingScreen::showPicker`); die Liste läuft an den Enden nicht um.
 
 ## Nebenläufigkeit (ab Schritt 1)
 
@@ -175,6 +176,27 @@ UI ◀── takeCover() / acknowledge() ──────  (Doppelpuffer: übe
 - HTTPS ohne Zertifikatsprüfung: Es werden nur öffentliche Bilder geladen, keine Zugangsdaten gesendet.
 - Grenzen: WebP und GIF werden nicht unterstützt, progressive JPEGs nur als unscharfe Vorschau (1/8).
   Deshalb gibt es mehrere Kandidaten, und `sonos_probe.py cover` zeigt vorab, was ein Dienst liefert.
+- Tempo: Je eine HTTP- und HTTPS-Verbindung bleibt bis zu 60 s offen und wird für das nächste Cover
+  vom selben Server wiederverwendet (spart bei HTTPS den TLS-Handshake). Eine offene Verbindung zu
+  einem anderen Server wird vorher geschlossen; Weiterleitungen verfolgt der Lader deshalb selbst.
+  Skalieren und Abdunkeln laufen in einem Durchlauf ohne 64-Bit-Divisionen.
+
+## Favoriten (ab Schritt 7)
+
+```
+nach dem Verbinden / beim Öffnen des Menüs (max. alle 10 s):
+  Browse FV:2 (seitenweise) ──▶ je Favorit nur Name, Dienst, Position ──▶ FavoritesInfo (PSRAM) ──▶ UI
+
+Favorit gewählt (Index + Name):
+  Browse FV:2 ab Position, 1 Eintrag ──▶ Name gleich? ──▶ playMethod()
+     direkt (Radio, Line-In, TV):           SetAVTransportURI(res, resMD) → Play
+     Warteschlange (Playlist, Album, Titel): RemoveAllTracksFromQueue → AddURIToQueue(res, resMD)
+                                              → SetAVTransportURI(x-rincon-queue:<Koordinator>#0) → Seek Titel 1 → Play
+```
+
+- `resMD` enthält das Anmelde-Token des Dienstes und geht unverändert zurück an den Speaker.
+- Alle Befehle gehen an den Koordinator des aktiven Raums, der Favorit spielt also in der ganzen Gruppe.
+- Playlists und Alben ersetzen die Warteschlange (wie „Jetzt abspielen“ in der Sonos-App).
 
 ## Designentscheidungen
 

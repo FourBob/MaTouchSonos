@@ -319,7 +319,7 @@ python3 tools/sonos_probe.py <IP> --save probe-seek transport seek 0:01:30
 
 ---
 
-## Checkliste Schritt 6 – Albumcover
+## Checkliste Schritt 6 – Albumcover ✅
 
 Jeder Dienst liefert Cover anders, deshalb bitte **mit allen Quellen testen, die du nutzt**.
 
@@ -346,3 +346,38 @@ Schick mir je Quelle die beiden Ausgaben, dann decken die Tests auch diese Diens
 - [ ] Menü, Raumwahl und Lautstärke-Einblendung liegen weiterhin sauber darüber
 - [ ] 30 Titelwechsel hintereinander (Wischen): kein Absturz, `heap_frei` im Log bleibt stabil
 - [ ] Log bei fehlenden Covern: `COVER … Download fehlgeschlagen/nicht darstellbar: <Grund>`. Bitte mitschicken
+
+Nachtrag (schnellere Cover): Das Log schlüsselt jetzt auf:
+`COVER ok: 88 KB, 640x640, Verbindung 850 ms, Übertragung 2100 ms, Dekodieren 300 ms, Skalieren 150 ms`.
+Beim nächsten Cover vom selben Server innerhalb von 60 s steht dort `Verbindung wiederverwendet`.
+
+## Checkliste Schritt 7 – Favoriten
+
+Favoriten funktionieren je nach Dienst verschieden, deshalb **zuerst T3**:
+```bash
+python3 tools/sonos_probe.py <IP> favorites list              # alle Favoriten + wie sie starten
+python3 tools/sonos_probe.py <IP> --save probe-fav favorites list  # dazu die Rohdaten (für Testdaten)
+python3 tools/sonos_probe.py <IP> favorites play <Nr>         # IP des Gruppen-Koordinators nehmen!
+```
+Achtung: `play` einer Playlist/eines Albums **ersetzt die Warteschlange** – genau wie die Firmware.
+Die Ausgabe von `favorites list` bitte mitschicken (Namen der Kinder vorher ersetzen, das Repo ist öffentlich).
+
+**Am Gerät** (`pio run -e matouch -t upload`):
+
+- [ ] Nach dem Start steht im Log `FAVORITEN: n geladen (… ms)`, n stimmt mit der Sonos-App überein
+- [ ] Langdruck → Menü → „Favoriten“ → Liste als Drehrad; unten steht der Dienst (z. B. „TuneIn · 3 / 12“)
+- [ ] Je Art einmal abspielen und prüfen, dass Now Playing (Titel, Cover) nachzieht:
+
+| Favorit | Log `FAVORIT … (direkt / über die Warteschlange)` | startet? | Now Playing + Cover? |
+|---|---|---|---|
+| Radiosender (TuneIn / Sonos Radio) | direkt | | |
+| Spotify-Playlist | Warteschlange | | |
+| Album | Warteschlange | | |
+| Einzeltitel | Warteschlange | | |
+| Sonos-Playlist (falls vorhanden) | Warteschlange | | |
+
+- [ ] Im gruppierten Raum (z. B. „Esszimmer + 1“) spielt der Favorit in der ganzen Gruppe
+- [ ] Favorit in der Sonos-App hinzufügen, Menü öffnen, nach ein paar Sekunden erneut „Favoriten“ → neuer Eintrag ist da
+- [ ] Beim nächsten Öffnen steht die Auswahl auf dem zuletzt gespielten Favoriten
+- [ ] Fehlerfall: Meldung in der Statuszeile (rot) und im Log `FAVORIT „…“ FEHLER: …` – bitte mitschicken
+
