@@ -17,6 +17,8 @@ Beispiele:
   python3 tools/sonos_probe.py 192.168.1.50 transport seek 0:01:30
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out transport info
   python3 tools/sonos_probe.py 192.168.1.50 nowplaying          # was läuft gerade?
+  python3 tools/sonos_probe.py - discover                       # Speaker im Netz suchen (SSDP)
+  python3 tools/sonos_probe.py 192.168.1.50 --save probe-topologie topology   # Räume und Gruppen
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out nowplaying
 """
 
@@ -26,6 +28,7 @@ import argparse
 import html
 import pathlib
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -178,6 +181,61 @@ def cmd_nowplaying(ip: str, args) -> int:
     return 0
 
 
+def cmd_discover(_ip: str, _args) -> int:
+    """SSDP-Suche wie die Firmware: M-SEARCH an 239.255.255.250:1900, 2 s auf Antworten warten."""
+    request = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n"
+               "MX: 1\r\nST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+    sock.settimeout(0.3)
+    found = {}
+    start = time.monotonic()
+    for _ in range(2):  # zweimal senden, UDP kann verloren gehen
+        sock.sendto(request.encode(), ("239.255.255.250", 1900))
+    while time.monotonic() - start < 2.0:
+        try:
+            data, addr = sock.recvfrom(2048)
+        except socket.timeout:
+            continue
+        text = data.decode("utf-8", "replace")
+        m = re.search(r"^location:\s*(\S+)", text, re.I | re.M)
+        if m and ("zoneplayer" in text.lower() or "sonos" in text.lower()):
+            found[addr[0]] = m.group(1)
+    sock.close()
+    if not found:
+        print("Keine Sonos-Speaker gefunden (Mac im selben Netz? Firewall/WLAN-Isolation?)")
+        return 1
+    print(f"{len(found)} Sonos-Speaker gefunden:")
+    for ip in sorted(found, key=lambda a: tuple(int(x) for x in a.split("."))):
+        print(f"  {ip:15}  {found[ip]}")
+    return 0
+
+
+def cmd_topology(ip: str, args) -> int:
+    """GetZoneGroupState – Räume, Gruppen, Koordinatoren (wie die Firmware sie auswertet)."""
+    path, urn = "/ZoneGroupTopology/Control", "urn:schemas-upnp-org:service:ZoneGroupTopology:1"
+    SERVICES["ZoneGroupTopology"] = (path, urn)
+    req, status, resp, ms = soap(ip, "ZoneGroupTopology", "GetZoneGroupState", [])
+    if not report("GetZoneGroupState", req, status, resp, ms, args.save):
+        return 1
+    inner = html.unescape(element(resp, "ZoneGroupState") or "")
+    for group in re.finditer(r"<ZoneGroup\s([^>]*)>(.*?)</ZoneGroup>", inner, re.S):
+        coord = re.search(r'Coordinator="([^"]+)"', group.group(1))
+        members = []
+        for m in re.finditer(r"<ZoneGroupMember\s([^>]*?)/?>", group.group(2)):
+            attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
+            hidden = attrs.get("Invisible") == "1" or attrs.get("IsZoneBridge") == "1"
+            loc = re.search(r"//([^:/]+)", attrs.get("Location", ""))
+            mark = "*" if coord and attrs.get("UUID") == coord.group(1) else " "
+            members.append(f"{mark} {html.unescape(attrs.get('ZoneName', '?')):20} {loc.group(1) if loc else '?':15}"
+                           f"{'  (ausgeblendet)' if hidden else ''}")
+        print("Gruppe:")
+        for line in members:
+            print("   " + line)
+    print("(* = Koordinator)")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Sonos-Befehle vom PC testen (T3).")
     p.add_argument("ip", help="IP-Adresse des Speakers")
@@ -197,11 +255,13 @@ def main() -> int:
     tr.add_argument("position", nargs="?", default="0:00:30", help="nur für seek: Zielposition H:MM:SS")
 
     sub.add_parser("nowplaying", help="Was läuft gerade? (GetPositionInfo + GetMediaInfo)")
+    sub.add_parser("discover", help="Sonos-Speaker im Netz suchen (SSDP); als IP '-' angeben")
+    sub.add_parser("topology", help="Räume und Gruppen (GetZoneGroupState)")
 
     args = p.parse_args()
     try:
         return {"info": cmd_info, "volume": cmd_volume, "transport": cmd_transport,
-                "nowplaying": cmd_nowplaying}[args.command](args.ip, args)
+                "nowplaying": cmd_nowplaying, "discover": cmd_discover, "topology": cmd_topology}[args.command](args.ip, args)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         print(f"Speaker unter {args.ip}:{PORT} nicht erreichbar: {e}")
         return 1

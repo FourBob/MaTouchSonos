@@ -11,6 +11,8 @@
 #include "Xml.h"
 #include "fixtures.h"
 #include "fixtures_nowplaying.h"
+#include "fixtures_topology.h"
+#include "Topology.h"
 #include "NowPlaying.h"
 
 using namespace sonos;
@@ -313,6 +315,90 @@ void test_nowplaying_requests_match_recorded() {
     TEST_ASSERT_EQUAL_STRING(fixtures::kGetMediaInfoRequest, avtransport::getMediaInfo().body.c_str());
 }
 
+// --- Topologie, SSDP, Gruppenlautstärke --------------------------------------------
+
+void test_topology_groups_filtered_and_sorted() {
+    std::vector<ZoneGroup> groups;
+    TEST_ASSERT_TRUE(topology::parseZoneGroupState(fixtures::kZoneGroupState, groups));
+    TEST_ASSERT_EQUAL_size_t(4, groups.size());  // ohne BOOST
+    TEST_ASSERT_EQUAL_STRING("Bad & Flur", groups[0].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("Küche", groups[1].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("Schlafzimmer", groups[2].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("Wohnzimmer", groups[3].name.c_str());
+}
+
+void test_topology_group_with_member() {
+    std::vector<ZoneGroup> groups;
+    topology::parseZoneGroupState(fixtures::kZoneGroupState, groups);
+    const ZoneGroup& kitchen = groups[1];
+    TEST_ASSERT_EQUAL_STRING("RINCON_BBBBBBBBBBBB01400", kitchen.coordinatorUuid.c_str());
+    TEST_ASSERT_EQUAL_STRING("192.168.1.20", kitchen.coordinatorIp.c_str());
+    TEST_ASSERT_EQUAL_size_t(2, kitchen.members.size());
+    TEST_ASSERT_EQUAL_STRING("Küche", kitchen.members[0].name.c_str());  // Koordinator zuerst
+    TEST_ASSERT_EQUAL_STRING("Büro", kitchen.members[1].name.c_str());
+    TEST_ASSERT_TRUE(kitchen.isGroup());
+    TEST_ASSERT_EQUAL_STRING("Küche + 1", kitchen.displayName().c_str());
+}
+
+void test_topology_stereo_pair_and_satellites_count_as_one() {
+    std::vector<ZoneGroup> groups;
+    topology::parseZoneGroupState(fixtures::kZoneGroupState, groups);
+    TEST_ASSERT_EQUAL_size_t(1, groups[2].members.size());  // Schlafzimmer (Stereopaar)
+    TEST_ASSERT_EQUAL_size_t(1, groups[3].members.size());  // Wohnzimmer (Sub/Surround)
+    TEST_ASSERT_FALSE(groups[3].isGroup());
+    TEST_ASSERT_EQUAL_STRING("Wohnzimmer", groups[3].displayName().c_str());
+}
+
+void test_topology_find_group() {
+    std::vector<ZoneGroup> groups;
+    topology::parseZoneGroupState(fixtures::kZoneGroupState, groups);
+    TEST_ASSERT_EQUAL_INT(1, topology::findGroupOf(groups, "RINCON_CCCCCCCCCCCC01400"));  // Büro -> Küche
+    TEST_ASSERT_EQUAL_INT(-1, topology::findGroupOf(groups, "RINCON_UNBEKANNT"));
+    TEST_ASSERT_EQUAL_INT(3, topology::findGroupByIp(groups, "192.168.1.10"));
+    TEST_ASSERT_EQUAL_INT(-1, topology::findGroupByIp(groups, "192.168.1.11"));  // Satellit
+}
+
+void test_topology_rejects_fault() {
+    std::vector<ZoneGroup> groups;
+    TEST_ASSERT_FALSE(topology::parseZoneGroupState(fixtures::kFault402, groups));
+}
+
+void test_topology_ip_from_location() {
+    TEST_ASSERT_EQUAL_STRING("192.168.1.50", topology::ipFromLocation("http://192.168.1.50:1400/xml/device_description.xml").c_str());
+    TEST_ASSERT_EQUAL_STRING("10.0.0.2", topology::ipFromLocation("http://10.0.0.2/x").c_str());
+    TEST_ASSERT_EQUAL_STRING("", topology::ipFromLocation("kaputt").c_str());
+}
+
+void test_topology_request() {
+    const SoapRequest req = topology::getZoneGroupState();
+    TEST_ASSERT_EQUAL_STRING("/ZoneGroupTopology/Control", req.path.c_str());
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:ZoneGroupTopology:1#GetZoneGroupState\"", req.soapAction.c_str());
+}
+
+void test_ssdp_request_and_responses() {
+    const std::string req = ssdp::buildSearchRequest();
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, req.find("M-SEARCH * HTTP/1.1\r\n"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, req.find("ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n"));
+    TEST_ASSERT_EQUAL_STRING("\r\n\r\n", req.substr(req.size() - 4).c_str());
+
+    std::string loc;
+    TEST_ASSERT_TRUE(ssdp::parseSearchResponse(fixtures::kSsdpSonos, loc));
+    TEST_ASSERT_EQUAL_STRING("http://192.168.1.20:1400/xml/device_description.xml", loc.c_str());
+    TEST_ASSERT_FALSE(ssdp::parseSearchResponse(fixtures::kSsdpOther, loc));
+}
+
+void test_group_volume_requests() {
+    TEST_ASSERT_EQUAL_STRING("/MediaRenderer/GroupRenderingControl/Control", grouprendering::getGroupVolume().path.c_str());
+    TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:GroupRenderingControl:1#SnapshotGroupVolume\"",
+                             grouprendering::snapshotGroupVolume().soapAction.c_str());
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+        grouprendering::setGroupVolume(130).body.find("<InstanceID>0</InstanceID><DesiredVolume>100</DesiredVolume></u:SetGroupVolume>"));
+    int v = 0;
+    TEST_ASSERT_TRUE(grouprendering::parseGetGroupVolume(
+        "<u:GetGroupVolumeResponse><CurrentVolume>33</CurrentVolume></u:GetGroupVolumeResponse>", v));
+    TEST_ASSERT_EQUAL_INT(33, v);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_xml_find_element_ignores_namespace_prefix);
@@ -350,5 +436,14 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_recorded_radio_dlf_without_media_hides_stream_filename);
     RUN_TEST(test_nowplaying_recorded_spotify_connect);
     RUN_TEST(test_nowplaying_requests_match_recorded);
+    RUN_TEST(test_topology_groups_filtered_and_sorted);
+    RUN_TEST(test_topology_group_with_member);
+    RUN_TEST(test_topology_stereo_pair_and_satellites_count_as_one);
+    RUN_TEST(test_topology_find_group);
+    RUN_TEST(test_topology_rejects_fault);
+    RUN_TEST(test_topology_ip_from_location);
+    RUN_TEST(test_topology_request);
+    RUN_TEST(test_ssdp_request_and_responses);
+    RUN_TEST(test_group_volume_requests);
     return UNITY_END();
 }
