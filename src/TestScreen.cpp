@@ -29,6 +29,9 @@ void onScreenTouch(lv_event_t* e) {
     } else if (code == LV_EVENT_RELEASED) {
         lv_obj_add_flag(touchDot, LV_OBJ_FLAG_HIDDEN);
     }
+    // Nur Aufsetzen und Loslassen loggen – PRESSING käme alle 20 ms.
+    if (code == LV_EVENT_PRESSED) Serial.printf("TOUCH down %d/%d\n", p.x, p.y);
+    if (code == LV_EVENT_RELEASED) Serial.printf("TOUCH up   %d/%d\n", p.x, p.y);
 }
 
 lv_obj_t* colorBar(lv_obj_t* parent, uint32_t color, int x) {

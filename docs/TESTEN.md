@@ -50,6 +50,11 @@ Die genaue Anleitung kommt mit Schritt 1.
 - Das **serielle Log** ab dem Start (einfach komplett in den Chat kopieren)
 - Bei Anzeigefehlern gern ein Handyfoto vom Display
 
+> **Hinweis zum Log:** Beim Start des Monitors erscheint immer
+> `Please build project in debug configuration to get more details about an exception.`
+> Das ist nur ein Hinweis des Filters `esp32_exception_decoder` und **kein Fehler**.
+> Ein echter Absturz sieht anders aus: `Guru Meditation Error`, `Backtrace:` und danach ein Neustart.
+
 ---
 
 ## Checkliste Schritt 0 – Hardware-Test
@@ -59,7 +64,7 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 
 **Start**
 - [ ] Das Log beginnt mit `=== MaTouchSonos – Schritt 0: Hardware-Test ===`
-- [ ] Das Log zeigt `PSRAM: 8 MB` und `Flash: 16 MB`
+- [ ] Das Log zeigt `PSRAM: 7.9 MB` oder `8.0 MB` und `Flash: 16 MB`
 - [ ] Im Log steht kein `FEHLER` und keine `Touch: CST826 antwortet nicht`-Warnung
 
 **Display**
@@ -84,6 +89,7 @@ ein grauer Ring am Rand, drei Farbbalken oben, in der Mitte der Zähler `0`.
 - [ ] Ein weißer Punkt erscheint unter dem Finger und folgt ihm
 - [ ] Oben, unten, links und rechts am Rand: Der Punkt liegt dort, wo der Finger ist (Achsen nicht vertauscht oder gespiegelt)
 - [ ] Die Koordinaten in der Mitte sind ungefähr `240 / 240`
+- [ ] Das Log zeigt beim Berühren `TOUCH down x/y` und beim Loslassen `TOUCH up x/y`
 
 **Stabilität**
 - [ ] Die FPS-Anzeige unten am Rand zeigt beim Drehen ≥ 25 FPS
