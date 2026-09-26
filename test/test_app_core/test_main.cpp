@@ -724,6 +724,16 @@ void test_img_cover_resize_darkens_in_one_pass() {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(twoSteps, oneStep, 48 * 48);
 }
 
+void test_img_rgb888_to_565() {
+    const uint8_t rgb[] = {255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 128, 7};
+    uint16_t out[4];
+    img::rgb888To565(rgb, out, 4);
+    TEST_ASSERT_EQUAL_HEX16(0xFFFF, out[0]);
+    TEST_ASSERT_EQUAL_HEX16(0x0000, out[1]);
+    TEST_ASSERT_EQUAL_HEX16(img::pack565(31, 0, 0), out[2]);
+    TEST_ASSERT_EQUAL_HEX16(img::pack565(0, 32, 0), out[3]);  // 128 >> 2 = 32, 7 >> 3 = 0
+}
+
 void test_img_darken() {
     uint16_t px[2] = {img::pack565(31, 63, 31), 0};
     img::darken(px, 2, 128);  // halbe Helligkeit
@@ -859,6 +869,7 @@ int main(int, char**) {
     RUN_TEST(test_img_cover_resize_upscale_keeps_corners);
     RUN_TEST(test_img_cover_resize_matches_reference);
     RUN_TEST(test_img_cover_resize_darkens_in_one_pass);
+    RUN_TEST(test_img_rgb888_to_565);
     RUN_TEST(test_img_darken);
     RUN_TEST(test_button_short_press);
     RUN_TEST(test_button_long_press_fires_while_held_and_no_short_after);

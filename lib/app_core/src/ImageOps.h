@@ -101,6 +101,13 @@ inline void coverResize(const uint16_t* src, int sw, int sh, uint16_t* dst, int 
     }
 }
 
+/** RGB888 (3 Bytes je Pixel, wie stb_image liefert) nach RGB565. */
+inline void rgb888To565(const uint8_t* rgb, uint16_t* out, size_t count) {
+    for (size_t i = 0; i < count; ++i, rgb += 3) {
+        out[i] = pack565(rgb[0] >> 3, rgb[1] >> 2, rgb[2] >> 3);
+    }
+}
+
 /** Dunkelt alle Pixel ab: factor/256 (z. B. 110 ≈ 43 % Helligkeit), damit Text lesbar bleibt. */
 inline void darken(uint16_t* buf, size_t count, uint16_t factor) {
     for (size_t i = 0; i < count; ++i) {

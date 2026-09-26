@@ -14,11 +14,18 @@
 #include "AlbumArt.h"
 #include "ImageOps.h"
 
+// stb_image: nur die Deklarationen, die Umsetzung steckt in StbImage.cpp
+#define STBI_NO_STDIO
+#include "third_party/stb_image.h"
+
 namespace net {
 namespace {
 
 constexpr size_t kMaxDownloadBytes = 700 * 1024;
 constexpr int kMaxDecodeSide = 1600;       // größere Bilder (nach JPEG-Verkleinerung) werden verworfen
+// Progressive JPEGs voll dekodieren (stb_image) bis zu dieser Pixelzahl. Speicherbedarf ~10 Byte je
+// Pixel im PSRAM (Koeffizienten + RGB), bei 800×800 also ~6 MB – darüber nur die 1/8-Vorschau.
+constexpr int kMaxProgressivePixels = 640 * 640;
 constexpr uint16_t kDarkenFactor = 105;    // ≈ 41 % Helligkeit – Text bleibt lesbar
 constexpr uint32_t kHttpTimeoutMs = 4000;  // HTTPS-Handshake kann ~1 s dauern
 // Bild-Proxy des Speakers (/getaa, Port 1400): Der Speaker lädt das Bild erst selbst beim Dienst –
@@ -71,6 +78,23 @@ int onPngLine(PNGDRAW* d) {
 
 void* psramAlloc(size_t bytes) { return heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
 
+/** Progressives JPEG vollständig dekodieren (stb_image). @return false → Aufrufer nimmt die 1/8-Vorschau. */
+bool decodeProgressive(const uint8_t* data, size_t size, DecodeTarget& out, std::string& why) {
+    int w = 0, h = 0, channels = 0;
+    uint8_t* rgb = stbi_load_from_memory(data, static_cast<int>(size), &w, &h, &channels, 3);
+    if (!rgb) {
+        why = std::string("stb_image: ") + stbi_failure_reason();
+        return false;
+    }
+    out.width = w;
+    out.height = h;
+    out.pixels = static_cast<uint16_t*>(psramAlloc(static_cast<size_t>(w) * h * 2));
+    if (out.pixels) app::img::rgb888To565(rgb, out.pixels, static_cast<size_t>(w) * h);
+    stbi_image_free(rgb);
+    if (!out.pixels) why = "kein Speicher (Bild)";
+    return out.pixels != nullptr;
+}
+
 /** Dekodiert `data` in einen neu angelegten RGB565-Puffer (Aufrufer gibt ihn frei). */
 bool decode(uint8_t* data, size_t size, DecodeTarget& out, std::string& why) {
     const app::img::Format fmt = app::img::detectFormat(data, size);
@@ -86,8 +110,27 @@ bool decode(uint8_t* data, size_t size, DecodeTarget& out, std::string& why) {
             // Progressive JPEGs dekodiert JPEGDEC nur als Vorschau in 1/8-Größe (erzwingt das intern) –
             // Puffer und Optionen müssen dazu passen, sonst landet ein Mini-Bild in der Ecke.
             const bool progressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
+            if (progressive && jpeg->getWidth() * jpeg->getHeight() <= kMaxProgressivePixels) {
+                jpeg->close();
+                jpeg->~JPEGDEC();
+                heap_caps_free(jpeg);
+                if (decodeProgressive(data, size, out, why)) return true;
+                Serial.printf("COVER: progressives JPEG nicht voll dekodierbar (%s) – nehme die Vorschau\n", why.c_str());
+                jpeg = static_cast<JPEGDEC*>(psramAlloc(sizeof(JPEGDEC)));
+                if (!jpeg) {
+                    why = "kein Speicher (JPEG)";
+                    return false;
+                }
+                new (jpeg) JPEGDEC();
+                if (!jpeg->openRAM(data, static_cast<int>(size), onJpegBlock)) {
+                    why = "JPEG nicht lesbar";
+                    jpeg->~JPEGDEC();
+                    heap_caps_free(jpeg);
+                    return false;
+                }
+            }
             const int scale = progressive ? 8 : app::img::chooseJpegScale(jpeg->getWidth(), jpeg->getHeight(), kCoverSize);
-            if (progressive) Serial.println(F("COVER: progressives JPEG – nur unscharfe Vorschau möglich"));
+            if (progressive) Serial.println(F("COVER: großes progressives JPEG – nur unscharfe Vorschau (1/8)"));
             out.width = jpeg->getWidth() / scale;
             out.height = jpeg->getHeight() / scale;
             if (out.width > kMaxDecodeSide || out.height > kMaxDecodeSide || out.width <= 0 || out.height <= 0) {
@@ -418,8 +461,8 @@ void CoverLoader::begin() {
     }
     gRequestMutex = xSemaphoreCreateMutex();
     // Niedrigere Priorität als die Sonos-Task: Bedienung und Abfragen gehen vor.
-    // 12 KB Stack: TLS-Handshake (mbedTLS) braucht einiges.
-    xTaskCreatePinnedToCore(task, "cover", 12288, nullptr, 0, &gTask, 0);
+    // 16 KB Stack: TLS-Handshake (mbedTLS) und stb_image brauchen einiges.
+    xTaskCreatePinnedToCore(task, "cover", 16384, nullptr, 0, &gTask, 0);
 }
 
 void CoverLoader::request(const std::vector<std::string>& candidates) {

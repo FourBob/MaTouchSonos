@@ -174,8 +174,11 @@ UI ◀── takeCover() / acknowledge() ──────  (Doppelpuffer: übe
 - Das fertige Bild liegt in Displaygröße vor. Beim Zeichnen skaliert LVGL nichts, das Cover
   kostet also keine Bildrate.
 - HTTPS ohne Zertifikatsprüfung: Es werden nur öffentliche Bilder geladen, keine Zugangsdaten gesendet.
-- Grenzen: WebP und GIF werden nicht unterstützt, progressive JPEGs nur als unscharfe Vorschau (1/8).
-  Deshalb gibt es mehrere Kandidaten, und `sonos_probe.py cover` zeigt vorab, was ein Dienst liefert.
+- Progressive JPEGs (z. B. Amazon-Music-Cover vom Speaker, 300×300) kann JPEGDEC nur als 1/8-Vorschau
+  dekodieren. Bis 640×640 übernimmt deshalb **stb_image** (`lib/net/src/third_party`, public domain/MIT,
+  nur JPEG, Puffer im PSRAM, ~10 Byte je Pixel); größere progressive Bilder bleiben bei der Vorschau.
+- Grenzen: WebP und GIF werden nicht unterstützt. Deshalb gibt es mehrere Kandidaten, und
+  `sonos_probe.py cover` zeigt vorab, was ein Dienst liefert.
 - Tempo: Je eine HTTP- und HTTPS-Verbindung bleibt bis zu 60 s offen und wird für das nächste Cover
   vom selben Server wiederverwendet (spart bei HTTPS den TLS-Handshake). Eine offene Verbindung zu
   einem anderen Server wird vorher geschlossen; Weiterleitungen verfolgt der Lader deshalb selbst.
