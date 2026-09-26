@@ -192,6 +192,9 @@ Favorit gewählt (Index + Name):
      direkt (Radio, Line-In, TV):           SetAVTransportURI(res, resMD) → Play
      Warteschlange (Playlist, Album, Titel): RemoveAllTracksFromQueue → AddURIToQueue(res, resMD)
                                               → SetAVTransportURI(x-rincon-queue:<Koordinator>#0) → Seek Titel 1 → Play
+     Ordner-Verknüpfung (ohne res, z. B. Pocket Casts „In Progress“):
+                                              wie Warteschlange, aber AddURIToQueue(x-rincon-cpcontainer:<ID>?sid=…&sn=…)
+                                              – sid aus der Dienst-Kennung (SA_RINCON<sid·256+7>), sn durchprobiert und gemerkt
 ```
 
 - `resMD` enthält das Anmelde-Token des Dienstes und geht unverändert zurück an den Speaker.

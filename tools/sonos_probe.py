@@ -22,7 +22,7 @@ Beispiele:
   python3 tools/sonos_probe.py 192.168.1.50 --save probe-out nowplaying
   python3 tools/sonos_probe.py 192.168.1.50 favorites list      # Sonos-Favoriten und wie sie starten
   python3 tools/sonos_probe.py 192.168.1.50 favorites play 3    # Favorit Nr. 3 abspielen (am Koordinator!)
-  python3 tools/sonos_probe.py 192.168.1.50 favorites try 3     # Experiment: Verknüpfung als Container starten
+  python3 tools/sonos_probe.py 192.168.1.50 favorites try 3     # Verknüpfung als Container starten (alle sn probieren)
 """
 
 from __future__ import annotations  # Typangaben auch mit Python 3.8/3.9 (macOS-Standard)
@@ -345,6 +345,10 @@ def browse_favorites(ip: str, start: int, count: int, save: str | None):
 
 def play_method(fav: dict) -> str:
     if not fav["uri"]:
+        # Wie sonos::favorites::playMethod: Ordner-Verknüpfung mit Objekt-ID und Dienst-Kennung
+        if (fav["class"].startswith("object.container") and re.search(r'<item id="[^"]+"', fav["metadata"])
+                and re.search(r"SA_RINCON\d+_", fav["metadata"])):
+            return "Ordner (Warteschlange)"
         return "nicht abspielbar"
     if fav["uri"].startswith(STREAM_PREFIXES) or fav["class"].startswith("object.item.audioItem.audioBroadcast"):
         return "direkt"
@@ -449,9 +453,9 @@ def cmd_favorites(ip: str, args) -> int:
         print(f"Favorit {args.index} gibt es nicht (0..{len(favs) - 1})")
         return 1
     fav = favs[args.index]
-    if args.op == "try":
-        return try_shortcut(ip, fav, args.save)
     method = play_method(fav)
+    if args.op == "try" or method.startswith("Ordner"):
+        return try_shortcut(ip, fav, args.save)
     print(f"  Starte „{fav['title']}“ – {method}")
     steps = []
     if method == "direkt":

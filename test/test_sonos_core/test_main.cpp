@@ -386,10 +386,19 @@ void test_favorites_play_method() {
     f.uri = "x-sonos-http:station.m3u8?sid=204";
     f.upnpClass = "object.item.audioItem.audioBroadcast";
     TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Direct);
-    // Verknüpfung auf eine Podcast-Seite: Metadaten vorhanden, aber keine Adresse (Pocket Casts, Geräte-Test)
+    // Ordner ohne Adresse und ohne Metadaten (ID, Dienst) lässt sich nicht starten
     f.uri.clear();
     f.upnpClass = "object.container";
     TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Unsupported);
+    f.metadata = "<DIDL-Lite><item id=\"10fe0064x\"><upnp:class>object.container</upnp:class></item></DIDL-Lite>";
+    TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Unsupported);  // Dienst-Kennung fehlt
+    f.metadata = "<DIDL-Lite><item id=\"10fe0064x\"><desc>SA_RINCON59655_X_#Svc59655-0-Token</desc></item></DIDL-Lite>";
+    TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::QueueContainer);
+    f.upnpClass = "object.item.audioItem.musicTrack";  // kein Ordner → nicht als Container probieren
+    TEST_ASSERT_TRUE(favorites::playMethod(f) == PlayMethod::Unsupported);
+    f.upnpClass = "object.container";
+    f.metadata = "<DIDL-Lite><item id=\"x\"><desc>SA_RINCON1234_X</desc></item></DIDL-Lite>";  // 1234 ≠ sid·256+7
+    TEST_ASSERT_EQUAL_INT(-1, favorites::serviceId(f));
     // Amazon-/Apple-Music-Titel (hls-static) ist kein Radio
     f.uri = "x-sonosapi-hls-static:song%3a123?sid=204";
     f.upnpClass = "object.item.audioItem.musicTrack";
@@ -419,7 +428,15 @@ void test_favorites_recorded() {
     TEST_ASSERT_EQUAL_STRING("Aus Pocket Casts", favs[3].description.c_str());
     TEST_ASSERT_TRUE(favs[3].uri.empty());  // <res></res>
     TEST_ASSERT_EQUAL_STRING("object.container", favs[3].upnpClass.c_str());
-    TEST_ASSERT_TRUE(favorites::playMethod(favs[3]) == PlayMethod::Unsupported);
+    // Ordner-Verknüpfung: im Geräte-Test mit genau dieser Adresse gestartet (23 Folgen)
+    TEST_ASSERT_TRUE(favorites::playMethod(favs[3]) == PlayMethod::QueueContainer);
+    TEST_ASSERT_EQUAL_INT(233, favorites::serviceId(favs[3]));  // Pocket Casts
+    std::string uri;
+    TEST_ASSERT_TRUE(favorites::containerUri(favs[3], 1, uri));
+    TEST_ASSERT_EQUAL_STRING("x-rincon-cpcontainer:10fe00642?sid=233&flags=8300&sn=1", uri.c_str());
+
+    TEST_ASSERT_EQUAL_INT(9, favorites::serviceId(favs[2]));    // Spotify (Typ 2311)
+    TEST_ASSERT_EQUAL_INT(333, favorites::serviceId(favs[0]));  // TuneIn (Typ 85255)
 
     TEST_ASSERT_EQUAL_STRING("Jazz-Funk", favs[4].title.c_str());
     TEST_ASSERT_EQUAL_STRING("object.container.playlistContainer", favs[4].upnpClass.c_str());
@@ -448,6 +465,13 @@ void test_avtransport_queue_requests() {
     TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(), "<EnqueuedURI>x-rincon-cpcontainer:1006206c</EnqueuedURI><EnqueuedURIMetaData>"));
     TEST_ASSERT_NOT_NULL(strstr(r.body.c_str(),
                                 "<DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>0</EnqueueAsNext>"));
+
+    int added = -1;
+    TEST_ASSERT_TRUE(avtransport::parseAddURIToQueue(
+        "<u:AddURIToQueueResponse><FirstTrackNumberEnqueued>1</FirstTrackNumberEnqueued>"
+        "<NumTracksAdded>23</NumTracksAdded><NewQueueLength>23</NewQueueLength></u:AddURIToQueueResponse>", added));
+    TEST_ASSERT_EQUAL_INT(23, added);
+    TEST_ASSERT_FALSE(avtransport::parseAddURIToQueue(fixtures::kFault402, added));
 
     r = avtransport::removeAllTracksFromQueue();
     TEST_ASSERT_EQUAL_STRING("\"urn:schemas-upnp-org:service:AVTransport:1#RemoveAllTracksFromQueue\"", r.soapAction.c_str());

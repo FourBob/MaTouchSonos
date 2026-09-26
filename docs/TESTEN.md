@@ -376,17 +376,19 @@ Die Ausgabe von `favorites list` bitte mitschicken (Namen der Kinder vorher erse
 | Album | Warteschlange | | |
 | Einzeltitel (Spotify, Amazon Music) | Warteschlange | | |
 | Sonos-Playlist (falls vorhanden) | Warteschlange | | |
+| Pocket Casts „In Progress“ | Ordner über die Warteschlange | | |
 
 - [ ] Im gruppierten Raum (z. B. „Esszimmer + 1“) spielt der Favorit in der ganzen Gruppe
 - [ ] Favorit in der Sonos-App hinzufügen, Menü öffnen, nach ein paar Sekunden erneut „Favoriten“ → neuer Eintrag ist da
 - [ ] Beim nächsten Öffnen steht die Auswahl auf dem zuletzt gespielten Favoriten
 - [ ] Fehlerfall: Meldung in der Statuszeile (rot) und im Log `FAVORIT „…“ FEHLER: …` – bitte mitschicken
 
-**Experiment Pocket Casts** (Verknüpfung „In Progress“ ohne Adresse):
+**Ordner-Verknüpfungen (z. B. Pocket Casts „In Progress“):** Sie haben keine Adresse, lassen sich aber als
+Container in die Warteschlange legen (`x-rincon-cpcontainer:<id>?sid=…&flags=8300&sn=…`). Die
+Kontonummer `sn` ist lokal nicht abfragbar; Probe und Firmware probieren 1, 2, … und die Firmware merkt
+sich die funktionierende je Dienst. Geräte-Test T3: Pocket Casts mit `sn=1` → 23 Folgen.
 ```bash
-python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>
+python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probiert alle sn, zeigt die passende
 ```
-Baut aus den Metadaten eine Container-Adresse (`x-rincon-cpcontainer:<id>?sid=233&flags=…&sn=…`) und
-probiert, sie in die Warteschlange zu legen (Warteschlange wird geleert). Bei Erfolg zeigt es die
-funktionierende Adresse – dann kann die Firmware solche Verknüpfungen ebenfalls starten.
-
+- [ ] „In Progress“ erscheint im Favoritenmenü (Unten: „Aus Pocket Casts“) und startet die Folgen
+- [ ] Log: `FAVORIT „In Progress“: 23 Einträge über x-rincon-cpcontainer:…&sn=1`

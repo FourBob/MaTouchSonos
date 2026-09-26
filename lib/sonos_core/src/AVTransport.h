@@ -40,6 +40,9 @@ SoapRequest addURIToQueue(const std::string& uri, const std::string& metadata);
 /** Adresse der Warteschlange eines Koordinators – als Quelle für setAVTransportURI(). */
 std::string queueUri(const std::string& coordinatorUuid);
 
+/** Liest <NumTracksAdded> aus der Antwort auf AddURIToQueue. @return false, wenn nicht vorhanden. */
+bool parseAddURIToQueue(const std::string& body, int& numTracksAdded);
+
 /** Liest <CurrentTransportState>. @return false, wenn nicht vorhanden. */
 bool parseTransportInfo(const std::string& body, TransportState& state);
 

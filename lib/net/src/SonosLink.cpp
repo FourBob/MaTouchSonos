@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,8 @@ constexpr int kUpnpTransitionNotAvailable = 701;
 constexpr uint16_t kBrowseTimeoutMs = 3000;      // Favoritenliste kann einige 10 KB groß sein
 constexpr int kFavoritesPageSize = 50;
 constexpr uint32_t kFavoritesMinIntervalMs = 10000;  // Favoriten höchstens so oft neu lesen
+constexpr int kMaxServiceSerial = 10;            // Kontonummern, die für Ordner-Verknüpfungen probiert werden
+constexpr uint16_t kAddContainerTimeoutMs = 8000;  // Dienst stellt die Folgen zusammen (Pocket Casts: ~2 s)
 
 const char* gSsid = nullptr;
 const char* gPassword = nullptr;
@@ -226,6 +229,7 @@ struct Link {
     // Favoriten
     bool favoritesLoaded = false;
     uint32_t favoritesTriedAt = 0;  // 0 = noch nie
+    std::map<int, int> serviceSerial;  // sid → funktionierende Kontonummer (Ordner-Verknüpfungen)
 
     bool hasTarget() const { return !targetIp.empty(); }
 
@@ -481,7 +485,7 @@ bool loadFavorites(Link& link) {
                                         [&](int position, sonos::Favorite&& f) {
                                             ++seen;
                                             if (f.title.empty() || fresh.count >= kMaxFavorites) return;
-                                            // Reine Verknüpfungen (z. B. Podcast-Seiten) haben keine Adresse –
+                                            // Nichts Abspielbares (Verknüpfung ohne Adresse und ohne Ordner-Daten) –
                                             // gar nicht erst anbieten statt beim Drücken einen Fehler zu zeigen.
                                             if (sonos::favorites::playMethod(f) == sonos::PlayMethod::Unsupported) {
                                                 ++hidden;
@@ -537,9 +541,45 @@ bool favoriteStep(Link& link, const char* title, const char* step, const sonos::
 }
 
 /**
+ * Ordner-Verknüpfung (z. B. Pocket Casts „In Progress“) als Container anhängen. Die Kontonummer des
+ * Dienstes ist lokal nicht abfragbar: bekannte zuerst, sonst 1…kMaxServiceSerial probieren und die
+ * funktionierende für diesen Dienst merken.
+ */
+bool addContainer(Link& link, const char* title, const sonos::Favorite& fav) {
+    const int sid = sonos::favorites::serviceId(fav);
+    std::vector<int> serials;
+    const auto known = link.serviceSerial.find(sid);
+    if (known != link.serviceSerial.end()) serials.push_back(known->second);
+    for (int sn = 1; sn <= kMaxServiceSerial; ++sn) {
+        if (known == link.serviceSerial.end() || sn != known->second) serials.push_back(sn);
+    }
+    std::string body;
+    for (int sn : serials) {
+        std::string uri;
+        if (!sonos::favorites::containerUri(fav, sn, uri)) break;
+        const sonos::SoapResult r =
+            call(link.targetIp, sonos::avtransport::addURIToQueue(uri, fav.metadata), body, kAddContainerTimeoutMs);
+        int added = 0;
+        if (r.ok && sonos::avtransport::parseAddURIToQueue(body, added) && added > 0) {
+            Serial.printf("FAVORIT „%s“: %d Einträge über %s\n", title, added, uri.c_str());
+            link.serviceSerial[sid] = sn;
+            return true;
+        }
+        if (r.httpStatus <= 0) {  // Verbindungsproblem, nicht „falsche Kontonummer“
+            favoriteFailed(title, r.error.c_str());
+            link.failed("AddURIToQueue", r.error);
+            return false;
+        }
+    }
+    favoriteFailed(title, "Dienst lässt diesen Ordner nicht abspielen");
+    return false;
+}
+
+/**
  * Favorit abspielen: Adresse und Metadaten einzeln nachladen, dann
  *  - Radio/Line-In/TV: SetAVTransportURI + Play
  *  - Playlist/Album/Titel: Warteschlange leeren, Favorit anhängen, Warteschlange abspielen
+ *  - Ordner-Verknüpfung: wie Playlist, aber als Container-Adresse (addContainer)
  */
 void startFavorite(Link& link, const FavoriteRequest& req) {
     if (!gFavorites) return;
@@ -584,10 +624,11 @@ void startFavorite(Link& link, const FavoriteRequest& req) {
 
     const sonos::PlayMethod method = sonos::favorites::playMethod(fav);
     Serial.printf("FAVORIT „%s“ (%s): %s\n", entry.title,
-                  method == sonos::PlayMethod::Direct  ? "direkt"
-                  : method == sonos::PlayMethod::Queue ? "über die Warteschlange"
-                                                       : "nicht abspielbar",
-                  fav.uri.c_str());
+                  method == sonos::PlayMethod::Direct           ? "direkt"
+                  : method == sonos::PlayMethod::Queue          ? "über die Warteschlange"
+                  : method == sonos::PlayMethod::QueueContainer ? "Ordner über die Warteschlange"
+                                                                : "nicht abspielbar",
+                  fav.uri.empty() ? fav.description.c_str() : fav.uri.c_str());
     if (method == sonos::PlayMethod::Unsupported) {
         favoriteFailed(entry.title, "Dieser Favorit lässt sich hier nicht abspielen");
         return;
@@ -602,11 +643,15 @@ void startFavorite(Link& link, const FavoriteRequest& req) {
             return;
         }
         const std::string queue = sonos::avtransport::queueUri(link.groups[link.roomIndex].coordinatorUuid);
-        if (!favoriteStep(link, entry.title, "RemoveAllTracksFromQueue", sonos::avtransport::removeAllTracksFromQueue()) ||
-            !favoriteStep(link, entry.title, "AddURIToQueue", sonos::avtransport::addURIToQueue(fav.uri, fav.metadata)) ||
-            !favoriteStep(link, entry.title, "SetAVTransportURI", sonos::avtransport::setAVTransportURI(queue, ""))) {
+        if (!favoriteStep(link, entry.title, "RemoveAllTracksFromQueue", sonos::avtransport::removeAllTracksFromQueue()))
+            return;
+        if (method == sonos::PlayMethod::QueueContainer) {
+            if (!addContainer(link, entry.title, fav)) return;
+        } else if (!favoriteStep(link, entry.title, "AddURIToQueue", sonos::avtransport::addURIToQueue(fav.uri, fav.metadata))) {
             return;
         }
+        if (!favoriteStep(link, entry.title, "SetAVTransportURI", sonos::avtransport::setAVTransportURI(queue, "")))
+            return;
         // Zum ersten Titel – schlägt fehl, wenn die Warteschlange schon dort steht; egal.
         call(link.targetIp, sonos::avtransport::seekTrack(1), body);
     }

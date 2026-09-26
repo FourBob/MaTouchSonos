@@ -24,9 +24,11 @@ struct Favorite {
 
 /** Wie ein Favorit gestartet wird. */
 enum class PlayMethod {
-    Direct,       ///< Radio, Line-In, TV: SetAVTransportURI + Play
-    Queue,        ///< Playlist, Album, Einzeltitel: Warteschlange ersetzen, dann abspielen
-    Unsupported,  ///< ohne abspielbare Adresse (z. B. reine Verknüpfungen in der App)
+    Direct,          ///< Radio, Line-In, TV: SetAVTransportURI + Play
+    Queue,           ///< Playlist, Album, Einzeltitel: Warteschlange ersetzen, dann abspielen
+    QueueContainer,  ///< Verknüpfung auf einen Ordner eines Dienstes (z. B. Pocket Casts „In Progress“):
+                     ///< ohne Adresse, aber als Container in die Warteschlange legbar – siehe containerUri()
+    Unsupported,     ///< nichts Abspielbares
 };
 
 /**
@@ -58,6 +60,18 @@ bool parseBrowse(const std::string& body, std::vector<Favorite>& out, int& total
 
 /** Entscheidet anhand von Adresse und Inhaltsart, wie der Favorit gestartet wird. */
 PlayMethod playMethod(const Favorite& favorite);
+
+/** Sonos-Dienstnummer (sid) aus der Dienst-Kennung der Metadaten (SA_RINCON<Typ>_…, Typ = sid·256 + 7), sonst −1. */
+int serviceId(const Favorite& favorite);
+
+/**
+ * Adresse, unter der ein verknüpfter Ordner (PlayMethod::QueueContainer) in die Warteschlange passt:
+ * x-rincon-cpcontainer:<Objekt-ID>?sid=<sid>&flags=8300&sn=<serial>.
+ * `serial` ist die Nummer des Dienstkontos in der Anlage. Sie steht nirgends lokal abfragbar –
+ * der Aufrufer probiert sie durch (bei Pocket Casts war es 1). Im Geräte-Test ermittelt.
+ * @return false, wenn Objekt-ID oder Dienst-Kennung fehlen
+ */
+bool containerUri(const Favorite& favorite, int serial, std::string& uri);
 
 }  // namespace favorites
 }  // namespace sonos

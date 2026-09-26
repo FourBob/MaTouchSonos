@@ -18,6 +18,18 @@ bool startsWith(const std::string& s, const char* prefix) { return s.rfind(prefi
 
 std::string field(const std::string& doc, const char* name) { return xml::unescape(xml::findElement(doc, name)); }
 
+/** Wert von id="…" im ersten <item> der Metadaten. */
+std::string metadataItemId(const std::string& metadata) {
+    const size_t item = metadata.find("<item ");
+    if (item == std::string::npos) return {};
+    const size_t tagEnd = metadata.find('>', item);
+    const size_t id = metadata.find(" id=\"", item);
+    if (id == std::string::npos || id > tagEnd) return {};
+    const size_t start = id + 5;
+    const size_t end = metadata.find('"', start);
+    return end == std::string::npos ? std::string() : xml::unescape(metadata.substr(start, end - start));
+}
+
 }  // namespace
 
 SoapRequest browse(int startIndex, int count) {
@@ -69,7 +81,14 @@ bool parseBrowse(const std::string& body, std::vector<Favorite>& out, int& total
 
 PlayMethod playMethod(const Favorite& favorite) {
     const std::string& uri = favorite.uri;
-    if (uri.empty()) return PlayMethod::Unsupported;
+    if (uri.empty()) {
+        // Verknüpfung ohne Adresse: Ordner eines Dienstes lassen sich als Container anhängen.
+        std::string container;
+        if (startsWith(favorite.upnpClass, "object.container") && containerUri(favorite, 1, container)) {
+            return PlayMethod::QueueContainer;
+        }
+        return PlayMethod::Unsupported;
+    }
 
     // Ströme: Radio (TuneIn, Sonos Radio, Senderlisten der Dienste), Line-In, TV.
     static const char* const kStreams[] = {
@@ -84,6 +103,24 @@ PlayMethod playMethod(const Favorite& favorite) {
     // Alles andere (Playlists, Alben, Sonos-Playlists, einzelne Titel) über die Warteschlange –
     // so funktionieren danach auch „Nächster“/„Vorheriger“ und Spulen.
     return PlayMethod::Queue;
+}
+
+int serviceId(const Favorite& favorite) {
+    const size_t pos = favorite.metadata.find("SA_RINCON");
+    if (pos == std::string::npos) return -1;
+    const char* digits = favorite.metadata.c_str() + pos + 9;
+    char* end = nullptr;
+    const long type = std::strtol(digits, &end, 10);
+    if (end == digits || *end != '_' || type < 7 || (type - 7) % 256 != 0) return -1;
+    return static_cast<int>((type - 7) / 256);
+}
+
+bool containerUri(const Favorite& favorite, int serial, std::string& uri) {
+    const std::string id = metadataItemId(favorite.metadata);
+    const int sid = serviceId(favorite);
+    if (id.empty() || sid < 0) return false;
+    uri = "x-rincon-cpcontainer:" + id + "?sid=" + std::to_string(sid) + "&flags=8300&sn=" + std::to_string(serial);
+    return true;
 }
 
 }  // namespace favorites

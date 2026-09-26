@@ -1,5 +1,7 @@
 #include "AVTransport.h"
 
+#include <cstdlib>
+
 #include "NowPlaying.h"
 #include "Xml.h"
 
@@ -74,6 +76,14 @@ TransportState parseTransportState(const std::string& text) {
     if (text == "STOPPED" || text == "NO_MEDIA_PRESENT") return TransportState::Stopped;
     if (text == "TRANSITIONING") return TransportState::Transitioning;
     return TransportState::Unknown;
+}
+
+bool parseAddURIToQueue(const std::string& body, int& numTracksAdded) {
+    bool found = false;
+    const std::string text = xml::findElement(body, "NumTracksAdded", &found);
+    if (!found || text.empty()) return false;
+    numTracksAdded = std::atoi(text.c_str());
+    return true;
 }
 
 bool parseTransportInfo(const std::string& body, TransportState& state) {
