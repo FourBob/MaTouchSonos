@@ -2,8 +2,13 @@
 //
 // Der Sockel hält nur den hinteren Körper (Ø 50) des Geräts. Der Kopf mit Display und Drehring
 // (Ø 79) schwebt frei darüber: nichts berührt den Ring, der Drückweg (2 mm) bleibt frei.
-// Das USB-C-Kabel kommt von hinten durch einen Tunnel genau in Achsrichtung zur Buchse –
-// der Stecker verhindert zugleich, dass sich der Körper im Sockel mitdreht.
+// Das USB-C-Kabel kommt von hinten durch einen Tunnel genau in Achsrichtung zur Buchse.
+//
+// Befestigung: Drei längere M2-Schrauben ersetzen die Original-Schrauben der Platine. Sie gehen
+// von hinten durch Kanäle im Sockel und durch Säulen, deren Oberkante die Platine gegen die
+// Original-Dome drückt. Die Säulen bestimmen die Einstecktiefe (der Becherrand schwebt ~1 mm über
+// dem Boden) – so bleibt die Platine immer fest eingespannt, und weder Drehen am Ring noch
+// Kabelzug belasten die USB-C-Buchse.
 //
 // Maße des Geräts: Makerfabs-Zeichnung (Kopf Ø 79 × 11,3, Körper Ø 50 × 26, Drückweg 2) und
 // Platinendatei (USB-C-Buchse 17,9 mm neben der Körpermitte). Alles in mm.
@@ -24,6 +29,19 @@ koerper_h = 26;       // Körper, von der Rückseite des Kopfes bis hinten
 drueckweg = 2;        // Kopf bewegt sich beim Drücken so weit auf den Körper zu
 usb_abstand = 17.9;   // USB-C-Buchse: Abstand zur Körpermitte
 
+/* [Befestigung (Platinen-Schrauben)] */
+pcb_tiefe = 3.0;      // Becherrand → Oberfläche der Platine (Bauteilseite). BITTE MESSEN
+pcb_dicke = 1.6;      // Platinenstärke
+schraube_l = 16;      // Länge der neuen M2-Schrauben (Gewinde, ohne Kopf)
+einschraub = 4;       // so tief greift die Schraube in den Original-Dom (≈ Originalschraube − pcb_dicke)
+saeule_d = 4.6;       // Säule unter der Platine (Lochrand der Platine ist frei von Bauteilen)
+schraube_loch = 2.4;  // Durchgang für M2
+kopf_kanal = 4.8;     // Kanal für Schraubenkopf (Ø ≤ 4,2) und Schraubendreher
+// Löcher der Platine in Gerätekoordinaten (Blick von vorn, USB-C-Buchse bei 90° = „oben“).
+// Aus der Eagle-Datei: Radius zur Platinenmitte und Winkel, von der Bauteilseite (hinten) auf die
+// Vorderansicht gespiegelt und so gedreht, dass die Buchse oben liegt.
+loecher = [[19.7, -98.7], [18.2, 2.6], [16.8, 140.6]];
+
 /* [Aufstellung] */
 neigung = 35;         // Displayfläche gegen die Senkrechte: 0 = senkrecht, 90 = liegend
 griff = 10;           // so tief steckt der Körper im Sockel (hinterer Becher bis vor die Fuge)
@@ -40,12 +58,14 @@ fuss_h = 6;           // Höhe des zylindrischen Fußes
 wand = 3.2;           // Wand um die Aufnahme
 boden = 4;            // Freiraum hinter dem Becher (Schrauben, Stecker, Bauteile)
 stecker_d = 14;       // Tunnel für den USB-C-Stecker (gerade Stecker: Gehäuse ~12 × 7)
-gewicht_d = 44;       // Gewichtstasche im Boden (z. B. Unterlegscheiben M10/M12)
+gewicht_d = 40;       // Gewichtstasche im Boden (z. B. Unterlegscheiben M20, Ø 37)
 gewicht_h = 8;
-gewicht_versatz = -10; // Tasche nach vorn (−) gerückt: Abstand zur Platine mit der WLAN-Antenne
+// Tasche ganz vorn (unter dem schwebenden Kopf): weg von der WLAN-Antenne und vom unteren Schraubenkanal
+gewicht_versatz = -(fuss_d / 2 - gewicht_d / 2 - 2 - 3);
 deckel_h = 1.6;
 fuesse_d = 10.5;      // Mulden für selbstklebende Silikonfüße (Ø 10)
 fuesse_t = 1;
+fuesse_pos = [[37, 45], [37, 135], [38, 200], [38, 340]];   // [Radius, Winkel] um die Fußmitte
 fase = 0.8;
 rundung = 2.5;        // Radius der oberen Fußkante
 
@@ -64,7 +84,10 @@ bohrung_d = koerper_d + 2 * spiel;
 aufnahme_d = bohrung_d + 2 * wand;
 z_hinten = -(kopf_h + koerper_h);           // Rückseite des Körpers
 z_mund = z_hinten + griff;                  // Oberkante des Sockels
+z_pcb = z_hinten + pcb_tiefe;               // Oberfläche der Platine = Oberkante der Säulen
+z_kopf = z_pcb - (schraube_l - pcb_dicke - einschraub);   // Auflage des Schraubenkopfs
 assert(griff <= koerper_h - drueckweg - 1, "griff zu groß: Sockel würde den Drückweg blockieren");
+assert(z_kopf <= z_hinten - boden - 1.2, "schraube_l zu kurz: Kopf läge nicht im vollen Material");
 
 // Weltkoordinaten eines Gerätepunkts (y, z) – nur Höhe bzw. Tiefe, für die Aufstellung
 function welt_z(y, z) = y * cos(e) + z * sin(e);
@@ -72,7 +95,7 @@ function welt_y(y, z) = y * sin(e) - z * cos(e);
 
 // Höhe der Displaymitte: tief genug für den Boden, hoch genug für den Schwebe-Abstand
 hz = max(1 - welt_z(-aufnahme_d / 2, z_hinten - boden - wand),   // Außenhaut hinten unten
-         5 - welt_z(-(bohrung_d / 2 - 2), z_hinten - boden) + gewicht_h,  // Innenraum über der Gewichtstasche
+         5 - welt_z(-bohrung_d / 2, z_hinten - boden) + gewicht_h,  // Innenraum über der Gewichtstasche
          schwebe - welt_z(-kopf_d / 2, -kopf_h));                // Kopf schwebt
 
 // Standfläche so weit nach hinten, dass Drücken auf die Displaymitte den Sockel nicht nach hinten
@@ -102,9 +125,9 @@ module hohlraum() {
         // Bohrung für den Körper, oben mit Einführfase, nach oben offen
         translate([0, 0, z_hinten]) cylinder(d = bohrung_d, h = 60);
         translate([0, 0, z_mund - 1.2]) cylinder(d1 = bohrung_d, d2 = bohrung_d + 2.4, h = 1.2 + 0.01);
-        // Freiraum hinter dem Becher (Schraubenköpfe, Stecker, Taster) – der Rand des Bechers liegt
-        // auf dem stehenbleibenden Absatz auf
-        translate([0, 0, z_hinten - boden]) cylinder(d = bohrung_d - 5, h = boden + 0.01);
+        // Freiraum hinter dem Becher (Stecker, Taster, Bauteile). Kein Absatz für den Becherrand:
+        // Die Säulen bestimmen die Tiefe, der Rand schwebt darüber.
+        translate([0, 0, z_hinten - boden]) cylinder(d = bohrung_d, h = boden + 0.01);
         // Kabeltunnel in Achsrichtung zur Buchse („oben“ im Gerät = hinten-oben am Sockel)
         translate([0, usb_abstand, z_hinten - 120]) cylinder(d = stecker_d, h = 120 + 0.01);
     }
@@ -124,8 +147,20 @@ module gewichtstasche() {
 }
 
 module fuesse() {
-    for (a = [45 : 90 : 315]) translate([0, fuss_y, 0]) rotate([0, 0, a])
-        translate([fuss_d / 2 - 9, 0, -0.01]) cylinder(d = fuesse_d, h = fuesse_t + 0.01);
+    for (f = fuesse_pos) translate([0, fuss_y, 0]) rotate([0, 0, f[1]])
+        translate([f[0], 0, -0.01]) cylinder(d = fuesse_d, h = fuesse_t + 0.01);
+}
+
+module saeulen() {
+    im_geraet() for (l = loecher) rotate([0, 0, l[1]]) translate([l[0], 0, z_hinten - boden - 0.01])
+        cylinder(d = saeule_d, h = z_pcb - (z_hinten - boden) + 0.01);
+}
+
+module schraubenkanaele() {
+    im_geraet() for (l = loecher) rotate([0, 0, l[1]]) translate([l[0], 0, 0]) {
+        translate([0, 0, z_kopf - 0.01]) cylinder(d = schraube_loch, h = z_pcb - z_kopf + 1);
+        translate([0, 0, z_kopf - 150]) cylinder(d = kopf_kanal, h = 150);
+    }
 }
 
 module sockel() {
@@ -135,9 +170,11 @@ module sockel() {
                 hull() { fuss(); aufnahme_aussen(); }
                 hohlraum();
             }
+            saeulen();
             // Rippen bleiben innerhalb der Aufnahme stehen (nicht im Kabeltunnel)
             difference() { quetschrippen(); im_geraet() translate([0, usb_abstand, z_hinten - 1]) cylinder(d = stecker_d, h = griff + 2); }
         }
+        schraubenkanaele();
         gewichtstasche();
         fuesse();
         translate([-200, -200, -100]) cube([400, 400, 100]);   // alles unter dem Tisch weg
@@ -150,9 +187,12 @@ module deckel() {
 
 module passtest() {
     // Nur die Aufnahme: Ring mit Bohrung, Rippen und Einführfase, Höhe = griff
-    intersection() {
-        sockel();
-        im_geraet() translate([0, 0, z_mund - griff]) cylinder(d = aufnahme_d + 1, h = griff + 0.01);
+    difference() {
+        intersection() {
+            sockel();
+            im_geraet() translate([0, 0, z_mund - griff]) cylinder(d = aufnahme_d + 1, h = griff + 0.01);
+        }
+        saeulen();   // deren Oberteile ragen in den Ring, hätten dort aber keinen Halt
     }
 }
 
@@ -175,4 +215,5 @@ else if (teil == "ansicht") {
     color("gainsboro") sockel();
     geraet();
     echo(str("Displaymitte ", hz, " mm über dem Tisch, Fuß ", fuss_y, " mm nach hinten versetzt"));
+    echo(str("Schrauben: 3 × M2 × ", schraube_l, ", Kopf liegt ", z_hinten - boden - z_kopf, " mm unter dem Boden"));
 }
