@@ -231,3 +231,9 @@ Dieses Projekt ist nicht mit Sonos, Inc. verbunden. „Sonos“ ist eine Marke v
 ## Lizenz
 
 [MIT](LICENSE)
+
+## Gehäuse
+
+Ein parametrischer 3D-Druck-Sockel für den Couchtisch (OpenSCAD, STL für den Bambu Lab P1S) liegt in
+[`hardware/gehaeuse/`](hardware/gehaeuse/README.md). Das Display schwebt frei über dem Sockel, und das
+Kabel läuft durch einen Tunnel von hinten.
