@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–6 ✅ abgeschlossen. Schritt 7 umgesetzt, wartet auf den Geräte-Test.
+> **Stand:** Schritt 0–7 ✅ abgeschlossen. Als Nächstes: Schritt 8 (Gruppen).
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -274,7 +274,7 @@ Wechsel mit kurzer Überblendung; Platzhalter, wenn es kein Cover gibt.
 
 ---
 
-### Schritt 7 – Favoriten und Radio starten 🧪
+### Schritt 7 – Favoriten und Radio starten ✅
 
 **Ziel:** Sonos-Favoriten aus dem Ringmenü abspielen.
 

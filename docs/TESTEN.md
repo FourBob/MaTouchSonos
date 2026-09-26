@@ -351,7 +351,7 @@ Nachtrag (schnellere Cover): Das Log schlüsselt jetzt auf:
 `COVER ok: 88 KB, 640x640, Verbindung 850 ms, Übertragung 2100 ms, Dekodieren 300 ms, Skalieren 150 ms`.
 Beim nächsten Cover vom selben Server innerhalb von 60 s steht dort `Verbindung wiederverwendet`.
 
-## Checkliste Schritt 7 – Favoriten
+## Checkliste Schritt 7 – Favoriten ✅
 
 Favoriten funktionieren je nach Dienst verschieden, deshalb **zuerst T3**:
 ```bash

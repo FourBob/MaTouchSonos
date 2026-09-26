@@ -40,7 +40,7 @@ Außen läuft der Fortschrittsbogen.
 | 4 | Ringmenü und Scrubbing | ✅ getestet |
 | 5 | Räume automatisch finden und wählen | ✅ getestet |
 | 6 | Albumcover (je nach Dienst: Speaker-Proxy, HTTPS, JPEG/PNG) | ✅ getestet |
-| 7 | Sonos-Favoriten und Radio starten | 🧪 wartet auf Geräte-Test |
+| 7 | Sonos-Favoriten und Radio starten (inkl. Pocket-Casts-Ordner) | ✅ getestet |
 | 8 | Gruppen verwalten, Gruppenlautstärke | ⏳ |
 | 9 | Live-Updates, Energiesparen, Feinschliff | ⏳ |
 
