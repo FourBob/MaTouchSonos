@@ -171,7 +171,7 @@ def image_info(data: bytes) -> str:
             if marker in (0xC0, 0xC1, 0xC2):
                 h = int.from_bytes(data[i + 5:i + 7], "big")
                 w = int.from_bytes(data[i + 7:i + 9], "big")
-                kind = "progressiv – das Gerät kann es nur unscharf (1/8) anzeigen" if marker == 0xC2 else "baseline"
+                kind = "progressiv – das Gerät dekodiert es bis 640×640 voll (stb_image), darüber nur unscharf (1/8)" if marker == 0xC2 else "baseline"
                 return f"JPEG {w}x{h} ({kind})"
             i += 2 + length
         return "JPEG (Größe unbekannt)"
