@@ -280,6 +280,22 @@ void test_nowplaying_tv_from_media_when_track_uri_empty() {
     TEST_ASSERT_TRUE(np.kind == SourceKind::TV);
 }
 
+void test_art_candidates_same_image_only_once() {
+    // Pocket Casts (Geräte-Test): Metadaten-Adresse und die aus der Titel-URI gebaute Ausweich-Adresse
+    // unterscheiden sich nur in der Schreibweise der Prozent-Kodierung – nur einmal laden.
+    NowPlaying np;
+    np.kind = SourceKind::Track;
+    np.trackUri = "x-sonos-http:aa63ec64-478f%23cd726c80.mp3?sid=233&flags=24616&sn=10";
+    np.albumArtUri = "/getaa?s=1&u=x-sonos-http%3aaa63ec64-478f%2523cd726c80.mp3%3fsid%3d233%26flags%3d24616%26sn%3d10";
+    const auto list = art::candidates(np, "192.168.1.10");
+    TEST_ASSERT_EQUAL_INT(1, static_cast<int>(list.size()));
+    TEST_ASSERT_EQUAL_STRING(("http://192.168.1.10:1400" + np.albumArtUri).c_str(), list[0].c_str());
+
+    // Echte Unterschiede außerhalb von %xx bleiben zwei Kandidaten
+    np.albumArtUri = "/getaa?s=1&u=X-SONOS-HTTP%3aaa63ec64";
+    TEST_ASSERT_EQUAL_INT(2, static_cast<int>(art::candidates(np, "192.168.1.10").size()));
+}
+
 void test_art_split_url() {
     art::UrlParts u;
     TEST_ASSERT_TRUE(art::splitUrl("https://i.scdn.co/image/ab67616d0000b273", u));
@@ -782,6 +798,7 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_tv_linein_and_empty);
     RUN_TEST(test_nowplaying_tv_from_media_when_track_uri_empty);
     RUN_TEST(test_nowplaying_rejects_unexpected_response);
+    RUN_TEST(test_art_candidates_same_image_only_once);
     RUN_TEST(test_art_split_url);
     RUN_TEST(test_favorites_browse_request);
     RUN_TEST(test_favorites_parse_all_kinds);

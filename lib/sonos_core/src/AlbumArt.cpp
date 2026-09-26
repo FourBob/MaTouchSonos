@@ -12,10 +12,27 @@ bool startsWith(const std::string& s, const char* prefix) {
     return s.compare(0, std::char_traits<char>::length(prefix), prefix) == 0;
 }
 
+/** Gleiche Adresse, auch wenn Prozent-Kodierungen unterschiedlich geschrieben sind („%3a“ = „%3A“). */
+bool sameUrl(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    int hexLeft = 0;  // Zeichen nach '%', die ohne Groß-/Kleinschreibung verglichen werden
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (hexLeft > 0) {
+            --hexLeft;
+            if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i])))
+                return false;
+            continue;
+        }
+        if (a[i] != b[i]) return false;
+        if (a[i] == '%') hexLeft = 2;
+    }
+    return true;
+}
+
 void addUnique(std::vector<std::string>& list, const std::string& url) {
     if (url.empty()) return;
     for (const auto& u : list) {
-        if (u == url) return;
+        if (sameUrl(u, url)) return;  // derselbe Download zweimal wäre nur Wartezeit
     }
     list.push_back(url);
 }

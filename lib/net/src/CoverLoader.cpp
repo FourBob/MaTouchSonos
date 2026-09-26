@@ -21,6 +21,10 @@ constexpr size_t kMaxDownloadBytes = 700 * 1024;
 constexpr int kMaxDecodeSide = 1600;       // größere Bilder (nach JPEG-Verkleinerung) werden verworfen
 constexpr uint16_t kDarkenFactor = 105;    // ≈ 41 % Helligkeit – Text bleibt lesbar
 constexpr uint32_t kHttpTimeoutMs = 4000;  // HTTPS-Handshake kann ~1 s dauern
+// Bild-Proxy des Speakers (/getaa, Port 1400): Der Speaker lädt das Bild erst selbst beim Dienst –
+// bei Podcasts (oft 3000 px) dauerte das im Geräte-Test länger als 4 s.
+constexpr uint32_t kSpeakerArtTimeoutMs = 12000;
+constexpr int kSonosPort = 1400;
 constexpr uint32_t kKeepOpenMs = 60000;    // offene Verbindung so lange für den nächsten Titel behalten
 constexpr int kMaxRedirects = 3;
 
@@ -219,8 +223,6 @@ Connection* connectTo(const sonos::art::UrlParts& u, DownloadStats& stats, std::
         return nullptr;
     }
     stats.connectMs += millis() - start;
-    // Lese-Timeout in Sekunden – setzt sonst HTTPClient::connect(), das bei offener Verbindung übersprungen wird.
-    c.client->setTimeout((kHttpTimeoutMs + 500) / 1000);
     c.key = key;
     return &c;
 }
@@ -239,6 +241,11 @@ size_t download(const std::string& firstUrl, uint8_t*& data, DownloadStats& stat
         }
         Connection* conn = connectTo(parts, stats, why);
         if (!conn) return 0;
+        // Lese-Timeout je Anfrage (auch bei wiederverwendeter Verbindung). Die Sekunden-Angabe für den
+        // Client setzt sonst HTTPClient::connect(), das bei offener Verbindung übersprungen wird.
+        const uint32_t timeoutMs = parts.port == kSonosPort ? kSpeakerArtTimeoutMs : kHttpTimeoutMs;
+        gHttp.setTimeout(static_cast<uint16_t>(timeoutMs));
+        conn->client->setTimeout((timeoutMs + 500) / 1000);
 
         if (!gHttp.begin(*conn->client, url.c_str())) {
             why = "URL ungültig";
