@@ -9,7 +9,8 @@ namespace app {
  *
  *   Normal ──lang──▶ Menü ──kurz auf „Spulen“────▶ Spulen
  *     ▲               │    ├─kurz auf „Räume“─────▶ Raumwahl
- *     │               │    └─kurz auf „Favoriten“─▶ Favoritenwahl
+ *     │               │    ├─kurz auf „Favoriten“─▶ Favoritenwahl
+ *     │               │    └─kurz auf „Spiel“─────▶ Spiel (bis Langdruck, kein Timeout)
  *     └──lang/Timeout─┘  Spulen/Raum/Favorit: kurz = übernehmen, lang/Timeout = abbrechen,
  *                        beides zurück nach Normal
  *
@@ -20,6 +21,7 @@ namespace app {
  * | Spulen   | Zielposition ändern  | dorthin springen     | abbrechen    |
  * | Raum     | Raum wählen          | Raum übernehmen      | abbrechen    |
  * | Favorit  | Favorit wählen       | abspielen            | abbrechen    |
+ * | Spiel    | (das Spiel liest den Ring selbst) | Spiel-Taste | beenden    |
  *
  * Menü, Spulen und Auswahllisten schließen sich nach `timeoutMs` ohne Eingabe von selbst.
  * Die Klasse entscheidet nur – ausführen (Lautstärke senden, Seek, Anzeige) tut der Aufrufer
@@ -27,11 +29,11 @@ namespace app {
  */
 class ModeController {
 public:
-    enum class Mode : uint8_t { Normal, Menu, Scrub, RoomPicker, FavoritePicker };
+    enum class Mode : uint8_t { Normal, Menu, Scrub, RoomPicker, FavoritePicker, Game };
 
     /** Menüeinträge im Uhrzeigersinn, beginnend oben. */
-    enum class MenuItem : uint8_t { Scrub, Rooms, Favorites, Close };
-    static constexpr int kMenuItemCount = 4;
+    enum class MenuItem : uint8_t { Scrub, Rooms, Favorites, Game, Close };
+    static constexpr int kMenuItemCount = 5;
 
     struct Action {
         enum class Type : uint8_t {
@@ -53,6 +55,9 @@ public:
             FavoritePickerMoved,      ///< value = markierter Favorit (Index)
             FavoriteSelected,         ///< value = gewählter Favorit (Index) → abspielen
             FavoritePickerCancelled,
+            GameStarted,
+            GameButton,               ///< kurzer Druck im Spiel
+            GameEnded,
             NotAvailable,      ///< value = MenuItem, das gerade nicht geht (z. B. Spulen bei Radio)
         };
         Type type = Type::None;
@@ -96,6 +101,9 @@ public:
             case Mode::FavoritePicker:
                 mode_ = Mode::Normal;
                 return {Action::Type::FavoritePickerCancelled, 0};
+            case Mode::Game:
+                mode_ = Mode::Normal;
+                return {Action::Type::GameEnded, 0};
         }
         return {};
     }
@@ -116,6 +124,8 @@ public:
             case Mode::FavoritePicker:
                 mode_ = Mode::Normal;
                 return {Action::Type::FavoriteSelected, favoriteIndex_};
+            case Mode::Game:
+                return {Action::Type::GameButton, 0};
         }
         return {};
     }
@@ -147,13 +157,16 @@ public:
             case Mode::FavoritePicker:
                 if (!moveClamped(favoriteIndex_, detents, ctx.favoriteCount)) return {};
                 return {Action::Type::FavoritePickerMoved, favoriteIndex_};
+            case Mode::Game:
+                return {};  // das Spiel liest die feineren Rohschritte selbst
         }
         return {};
     }
 
     /** Regelmäßig aufrufen: schließt Menü bzw. Spulen nach Ablauf der Wartezeit. */
     Action tick(uint32_t nowMs) {
-        if (mode_ == Mode::Normal || (nowMs - lastInputMs_) < timeoutMs_) return {};
+        // Im Spiel kein Timeout – man schaut dem Ball zu, ohne ständig zu drehen
+        if (mode_ == Mode::Normal || mode_ == Mode::Game || (nowMs - lastInputMs_) < timeoutMs_) return {};
         const Mode was = mode_;
         mode_ = Mode::Normal;
         switch (was) {
@@ -161,7 +174,8 @@ public:
             case Mode::Scrub: return {Action::Type::ScrubCancelled, 0};
             case Mode::RoomPicker: return {Action::Type::RoomPickerCancelled, 0};
             case Mode::FavoritePicker: return {Action::Type::FavoritePickerCancelled, 0};
-            case Mode::Normal: break;
+            case Mode::Normal:
+            case Mode::Game: break;
         }
         return {};
     }
@@ -220,6 +234,9 @@ private:
                 if (favoriteIndex_ >= ctx.favoriteCount) favoriteIndex_ = ctx.favoriteCount - 1;
                 if (favoriteIndex_ < 0) favoriteIndex_ = 0;
                 return {Action::Type::FavoritePickerOpened, favoriteIndex_};
+            case MenuItem::Game:
+                mode_ = Mode::Game;
+                return {Action::Type::GameStarted, 0};
         }
         return {};
     }

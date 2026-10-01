@@ -22,6 +22,7 @@
 #include <Preferences.h>
 #include <lvgl.h>
 
+#include <cmath>
 #include <cstring>
 
 #include "AVTransport.h"
@@ -30,6 +31,7 @@
 #include "Diagnostics.h"
 #include "CoverLoader.h"
 #include "Display.h"
+#include "GameScreen.h"
 #include "IdleController.h"
 #include "Input.h"
 #include "ModeController.h"
@@ -37,7 +39,9 @@
 #include "NowPlayingScreen.h"
 #include "PlaybackController.h"
 #include "ProgressTracker.h"
+#include "RingBreakout.h"
 #include "SonosLink.h"
+#include "Touch.h"
 #include "VolumeController.h"
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -56,6 +60,8 @@ namespace {
 
 constexpr uint32_t kMessageMs = 4000;      // Fehlermeldungen (z. B. „Nichts zum Abspielen“)
 constexpr uint32_t kHintMs = 1500;         // kurze Hinweise (z. B. „Nächster Titel“)
+constexpr float kGameDegPerStep = 4.5f;    // Spiel: Schläger-Drehung je Encoder-Rohschritt (18° je Rastung)
+constexpr uint32_t kGameStepMs = 16;       // Spiel: ~60 Schritte/s
 constexpr bool kEncoderDiagnostics = false; // true: jede Encoder-Bewegung loggen (ENC-DIAG), zur Fehlersuche
 
 app::ButtonDetector button;
@@ -75,6 +81,12 @@ char roomName[56] = "";          // aktiver Raum, steht in der Statuszeile
 Preferences prefs;               // NVS: zuletzt gewählter Raum (Schlüssel "room")
 
 uint32_t coverVersion = 0;       // zuletzt angezeigtes Cover
+
+// Easteregg „Ringbrecher“ (Menüpunkt „Spiel“)
+app::game::RingBreakout game;
+GameScreen gameScreen;
+uint32_t gameNextStepMs = 0;
+int gameHighscore = 0;            // NVS-Schlüssel "game_hi"
 
 net::FavoritesInfo* favorites = nullptr;  // PSRAM (~10 KB), in setup() angelegt
 uint32_t favoritesVersion = 0;
@@ -334,12 +346,68 @@ const char* menuItemName(int item) {
         case app::ModeController::MenuItem::Scrub: return "Spulen";
         case app::ModeController::MenuItem::Rooms: return "Räume";
         case app::ModeController::MenuItem::Favorites: return "Favoriten";
+        case app::ModeController::MenuItem::Game: return "Spiel";
         case app::ModeController::MenuItem::Close: return "Schließen";
     }
     return "?";
 }
 
-/** Führt aus, was der ModeController entschieden hat. */
+// --- Spiel (Easteregg) -------------------------------------------------------------
+
+void startGame(uint32_t now) {
+    gameHighscore = prefs.isKey("game_hi") ? static_cast<int>(prefs.getUInt("game_hi", 0)) : 0;
+    game.reset();
+    gameScreen.enter(game, gameHighscore);
+    gameNextStepMs = now;
+    Serial.printf("SPIEL Ringbrecher gestartet (Rekord %d)\n", gameHighscore);
+}
+
+void saveHighscore() {
+    if (game.score() > gameHighscore) {
+        gameHighscore = game.score();
+        prefs.putUInt("game_hi", static_cast<uint32_t>(gameHighscore));
+        Serial.printf("SPIEL neuer Rekord: %d\n", gameHighscore);
+    }
+}
+
+void endGame() {
+    saveHighscore();
+    lv_obj_invalidate(lv_scr_act());  // Oberfläche komplett neu zeichnen
+    lastShownSecond = -2;
+    Serial.printf("SPIEL beendet: %d Punkte, Level %d\n", game.score(), game.level());
+}
+
+/** Ein Durchlauf im Spiel: Eingaben, Spielschritte im 60-Hz-Takt, Anzeige. */
+void gameLoop(uint32_t now, int32_t rawSteps) {
+    if (rawSteps != 0) {
+        game.movePaddle(rawSteps * kGameDegPerStep);
+        idle.onInput(now);
+    }
+    int16_t tx, ty;
+    if (hal::Touch::read(tx, ty)) {  // Antippen: Schläger springt zum Finger (nicht in der Mitte)
+        const float dx = tx - 240.0f, dy = ty - 240.0f;
+        if (dx * dx + dy * dy > 80.0f * 80.0f) game.setPaddleAngle(atan2f(dy, dx) * 57.29578f);
+        idle.onInput(now);
+    }
+    const auto before = game.state();
+    int steps = 0;
+    while (static_cast<int32_t>(now - gameNextStepMs) >= 0 && steps < 4) {
+        game.step();
+        gameNextStepMs += kGameStepMs;
+        ++steps;
+    }
+    if (static_cast<int32_t>(now - gameNextStepMs) >= 0) gameNextStepMs = now + kGameStepMs;  // nicht aufholen
+    if (game.state() == app::game::RingBreakout::State::Playing) idle.onInput(now);  // nicht dimmen beim Spielen
+    if (before != game.state() && game.state() == app::game::RingBreakout::State::GameOver) {
+        const int previous = gameHighscore;
+        saveHighscore();
+        gameScreen.render(game, previous);  // „Neuer Rekord!“ gegen den alten Rekord prüfen
+        return;
+    }
+    gameScreen.render(game, gameHighscore);
+}
+
+/** Führt aus, was der ModeController entschieden hat. *//** Führt aus, was der ModeController entschieden hat. */
 void apply(const app::ModeController::Action& a, uint32_t now) {
     using T = app::ModeController::Action::Type;
     switch (a.type) {
@@ -407,6 +475,16 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
         case T::FavoritePickerCancelled:
             screen.hidePicker();
             break;
+        case T::GameStarted:
+            screen.hideMenu();
+            startGame(now);
+            break;
+        case T::GameButton:
+            game.press();
+            break;
+        case T::GameEnded:
+            endGame();
+            break;
         case T::NotAvailable: {
             screen.hideMenu();
             const auto item = static_cast<app::ModeController::MenuItem>(a.value);
@@ -418,6 +496,7 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
                     text = favorites && favorites->loaded ? "Keine Favoriten – in der Sonos-App anlegen"
                                                           : "Favoriten werden noch geladen …";
                     break;
+                case app::ModeController::MenuItem::Game:
                 case app::ModeController::MenuItem::Close: break;
             }
             showMessage(text, NowPlayingScreen::Status::Info, kMessageMs, now);
@@ -535,6 +614,15 @@ void loop() {
 
     updateProgress(now);
     expireMessage(now);
+    if (modes.mode() == app::ModeController::Mode::Game) {
+        // Das Spiel zeichnet selbst (am LVGL vorbei) – LVGL pausiert so lange
+        gameLoop(now, raw);
+        if (idle.tick(now, true)) hal::Display::setBacklight(idle.level());
+        diag::logStatusPeriodically(millis(), now);
+        delay(2);
+        return;
+    }
+
     screen.tick(now);
     lv_timer_handler();  // liest auch den Touch (Wischen → onSwipe)
 

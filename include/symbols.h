@@ -6,3 +6,4 @@
 
 #define MTS_SYMBOL_BACKWARD "\xEF\x81\x8A" /* U+F04A zurückspulen */
 #define MTS_SYMBOL_FORWARD  "\xEF\x81\x8E" /* U+F04E vorspulen */
+#define MTS_SYMBOL_GAMEPAD  "\xEF\x84\x9B" /* U+F11B Gamepad (Spiel) */

@@ -240,6 +240,19 @@ SonosLink-Task                                   Koordinator (Port 1400)
 - Auswertung (`sonos::gena`, getestet): Kopf der NOTIFY-Anfrage, `LastChange` (kodiertes XML, darin
   Metadaten nochmals kodiert), Lautstärke nur Kanal `Master`.
 
+## Easteregg: „Ringbrecher“
+
+Breakout für das runde Display (Menüpunkt **Spiel**, später versteckbar). Der Schläger läuft außen am Rand,
+die Steine liegen als 4 Ringe um die Mitte (10/14/18/22 Segmente), die Mitte zeigt Punkte und Leben.
+
+- **Logik:** `app::game::RingBreakout` (app_core, getestet), fester Zeitschritt 1/60 s mit zwei Teilschritten,
+  Abprallwinkel am Schläger je nach Trefferpunkt, Level werden schneller und der Schläger schmaler.
+- **Anzeige:** `GameScreen` zeichnet **direkt über Arduino_GFX** (`hal::Display::gfx()`), nur Ball, Schläger,
+  getroffene Steine und geänderte Zahlen. LVGL pausiert solange, beim Beenden wird die Oberfläche neu gezeichnet.
+- **Eingabe:** Ring = Schläger (Rohschritte, 4,5° je Schritt = 18° je Rastung), Antippen = Schläger zum Finger,
+  kurz drücken = Ball abschießen/neu starten, lang drücken = Ende. Kein Menü-Timeout, Display dimmt nicht beim Spielen.
+- **Rekord:** im NVS (`game_hi`). Musik und Live-Updates laufen währenddessen normal weiter.
+
 ## Designentscheidungen
 
 | Entscheidung | Begründung |

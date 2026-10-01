@@ -20,7 +20,7 @@
  * verschwindet 2 s nach der letzten Änderung wieder.
  * Wischen nach links/rechts meldet der Bildschirm über den Swipe-Callback.
  *
- * Ringmenü (Langdruck): Einträge liegen im Kreis (oben, rechts, unten, links), der
+ * Ringmenü (Langdruck): Einträge liegen gleichmäßig im Kreis (im Uhrzeigersinn ab oben), der
  * gewählte ist grün hinterlegt, sein Name steht in der Mitte.
  * Spulen: Der Fortschrittsring wird dicker und bekommt einen Punkt an der Zielposition,
  * die Zielzeit steht groß in der Mitte.

@@ -8,6 +8,7 @@
 #include "ButtonDetector.h"
 #include "DetentTracker.h"
 #include "IdleController.h"
+#include "RingBreakout.h"
 #include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
@@ -405,11 +406,12 @@ void test_mode_menu_selection_wraps() {
     m.onLongPress(0);  // Spulen
     TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Rooms), m.onDetents(+1, 10, trackCtx()).value);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Favorites), m.onDetents(+1, 20, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 30, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 40, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 50, trackCtx()).value);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Favorites), m.onDetents(+7, 60, trackCtx()).value);  // 7 ≡ 3
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-7, 70, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Game), m.onDetents(+1, 30, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(+1, 40, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Scrub), m.onDetents(+1, 50, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Close), m.onDetents(-1, 60, trackCtx()).value);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Favorites), m.onDetents(+8, 70, trackCtx()).value);  // Schließen + 8 ≡ +3
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Item::Game), m.onDetents(-9, 80, trackCtx()).value);       // −9 ≡ +1
     TEST_ASSERT_TRUE(m.mode() == Mode::Menu);  // Drehen im Menü ändert keine Lautstärke
 }
 
@@ -665,6 +667,139 @@ void test_idle_brightness_change_reported_once() {
     idle.onInput(130000);
     TEST_ASSERT_TRUE(idle.tick(130010, false));
     TEST_ASSERT_FALSE(idle.tick(130020, false));
+}
+
+void test_mode_game_runs_until_long_press_without_timeout() {
+    ModeController m(10000);
+    m.onLongPress(0);
+    m.onDetents(+3, 10, trackCtx());  // Spiel
+    auto a = m.onShortPress(20, trackCtx());
+    TEST_ASSERT_TRUE(a.type == Act::GameStarted);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Game);
+    TEST_ASSERT_TRUE(m.onShortPress(100, trackCtx()).type == Act::GameButton);
+    TEST_ASSERT_TRUE(m.onDetents(+5, 200, trackCtx()).type == Act::None);  // Ring gehört dem Spiel
+    TEST_ASSERT_TRUE(m.tick(600000).type == Act::None);                    // kein Timeout
+    TEST_ASSERT_TRUE(m.mode() == Mode::Game);
+    TEST_ASSERT_TRUE(m.onLongPress(600100).type == Act::GameEnded);
+    TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+}
+
+// --- Ringbrecher (Spiel) -------------------------------------------------------------
+
+using Game = app::game::RingBreakout;
+
+static void runSteps(Game& g, int n) { for (int i = 0; i < n; ++i) g.step(); }
+
+void test_game_start_serving_ball_follows_paddle() {
+    Game g;
+    TEST_ASSERT_TRUE(g.state() == Game::State::Serving);
+    TEST_ASSERT_EQUAL_INT(3, g.lives());
+    TEST_ASSERT_EQUAL_INT(10 + 14 + 18 + 22, g.bricksLeft());
+    g.setPaddleAngle(0);  // rechts
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, Game::kPaddleR - Game::kBallR - 2, g.ballX());
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 0, g.ballY());
+    g.movePaddle(-90);    // oben (Winkel im Uhrzeigersinn, y nach unten)
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 270, g.paddleAngle());
+    TEST_ASSERT_TRUE(g.ballY() < -200);
+    runSteps(g, 30);      // ohne Abschuss bewegt sich nichts
+    TEST_ASSERT_TRUE(g.ballY() < -200);
+}
+
+void test_game_angle_helpers() {
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 350, Game::normalize(-10));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 10, Game::normalize(370));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 20, Game::angleDiff(10, 350));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -20, Game::angleDiff(350, 10));
+}
+
+void test_game_paddle_returns_ball_inward() {
+    Game g;
+    g.clearBricks();
+    g.setBrick(0, 0, true);  // ein Stein, damit kein Levelwechsel stört
+    g.setPaddleAngle(0);
+    g.setBall(190, 0, 4, 0);  // fliegt nach rechts auf den Schläger zu
+    runSteps(g, 10);
+    TEST_ASSERT_TRUE(g.state() == Game::State::Playing);
+    TEST_ASSERT_TRUE(g.ballVX() < 0);  // zurück nach innen
+    TEST_ASSERT_EQUAL_INT(3, g.lives());
+}
+
+void test_game_paddle_edge_deflects_sideways() {
+    Game g;
+    g.clearBricks();
+    g.setBrick(0, 0, true);
+    g.setPaddleAngle(-15);    // Schläger leicht oberhalb: Treffer am unteren Rand
+    g.setBall(190, 0, 4, 0);
+    runSteps(g, 10);
+    TEST_ASSERT_TRUE(g.ballVX() < 0);
+    TEST_ASSERT_TRUE(fabsf(g.ballVY()) > 1.0f);  // schräg abgelenkt
+}
+
+void test_game_miss_costs_life_then_game_over() {
+    Game g;
+    g.clearBricks();
+    g.setBrick(0, 0, true);
+    g.setPaddleAngle(180);    // Schläger links, Ball fliegt nach rechts hinaus
+    for (int life = 3; life >= 1; --life) {
+        g.setBall(190, 0, 5, 0);
+        runSteps(g, 40);
+        TEST_ASSERT_EQUAL_INT(life - 1, g.lives());
+    }
+    TEST_ASSERT_TRUE(g.state() == Game::State::GameOver);
+    g.press();                // neu starten
+    TEST_ASSERT_TRUE(g.state() == Game::State::Serving);
+    TEST_ASSERT_EQUAL_INT(3, g.lives());
+    TEST_ASSERT_EQUAL_INT(0, g.score());
+}
+
+void test_game_brick_hit_scores_and_bounces() {
+    Game g;
+    g.clearBricks();
+    g.setBrick(3, 0, true);   // äußerer Ring, Segment 0 (rechts, 0°…16,4°)
+    g.setBrick(0, 5, true);   // zweiter Stein, damit das Level nicht endet
+    const float mid = (Game::ringInner(3) + Game::ringOuter(3)) / 2;
+    g.setBall(mid + 40, 10, -4, 0);  // kommt von außen
+    runSteps(g, 20);
+    TEST_ASSERT_FALSE(g.brick(3, 0));
+    TEST_ASSERT_EQUAL_INT(10, g.score());  // äußerer Ring: 10 Punkte
+    TEST_ASSERT_TRUE(g.ballVX() > 0);      // radial zurückgeprallt
+}
+
+void test_game_hub_bounces() {
+    Game g;
+    g.clearBricks();
+    g.setBrick(3, 10, true);
+    g.setBall(-60, 0, 4, 0);  // auf die Mitte zu (Ringe leer)
+    runSteps(g, 20);
+    TEST_ASSERT_TRUE(g.ballVX() < 0);
+}
+
+void test_game_last_brick_next_level() {
+    Game g;
+    g.clearBricks();
+    g.setBrick(3, 0, true);
+    const float mid = (Game::ringInner(3) + Game::ringOuter(3)) / 2;
+    g.setBall(mid + 40, 10, -4, 0);
+    runSteps(g, 20);
+    TEST_ASSERT_EQUAL_INT(2, g.level());
+    TEST_ASSERT_TRUE(g.state() == Game::State::Serving);
+    TEST_ASSERT_EQUAL_INT(64, g.bricksLeft());
+}
+
+void test_game_long_run_stays_inside_or_loses_life() {
+    // Robustheit: 10 000 Schritte mit Schläger, der dem Ball folgt – Ball nie „verloren“ außerhalb
+    Game g;
+    g.press();
+    for (int i = 0; i < 10000; ++i) {
+        const float a = Game::normalize(atan2f(g.ballY(), g.ballX()) * 57.29578f);
+        g.setPaddleAngle(a);
+        g.step();
+        if (g.state() == Game::State::Serving) g.press();
+        const float r = sqrtf(g.ballX() * g.ballX() + g.ballY() * g.ballY());
+        TEST_ASSERT_TRUE(r < Game::kArenaR + 20);
+    }
+    TEST_ASSERT_EQUAL_INT(3, g.lives());     // perfekter Spieler verliert nie
+    TEST_ASSERT_TRUE(g.score() > 0);
 }
 
 // --- ImageOps (Albumcover) --------------------------------------------------------
@@ -928,6 +1063,16 @@ int main(int, char**) {
     RUN_TEST(test_idle_input_while_dimmed_is_executed);
     RUN_TEST(test_idle_wake_from_off_swallows_input_and_grace);
     RUN_TEST(test_idle_brightness_change_reported_once);
+    RUN_TEST(test_mode_game_runs_until_long_press_without_timeout);
+    RUN_TEST(test_game_start_serving_ball_follows_paddle);
+    RUN_TEST(test_game_angle_helpers);
+    RUN_TEST(test_game_paddle_returns_ball_inward);
+    RUN_TEST(test_game_paddle_edge_deflects_sideways);
+    RUN_TEST(test_game_miss_costs_life_then_game_over);
+    RUN_TEST(test_game_brick_hit_scores_and_bounces);
+    RUN_TEST(test_game_hub_bounces);
+    RUN_TEST(test_game_last_brick_next_level);
+    RUN_TEST(test_game_long_run_stays_inside_or_loses_life);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

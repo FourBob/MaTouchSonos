@@ -422,3 +422,17 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] **24 h laufen lassen**: danach reagiert es sofort; `heap_min` im STATUS sinkt nicht stetig;
       nach einem Neustart steht im Log `Letzter Neustart: …` (bei Absturz: `ABSTURZ`, bei Watchdog: `WATCHDOG`)
 
+## Checkliste Easteregg „Ringbrecher“
+
+- [ ] Ringmenü hat 5 Einträge im Kreis, „Spiel“ mit Gamepad-Symbol
+- [ ] „Spiel“ öffnen → Steinringe, Schläger unten, Ball auf dem Schläger, „DRUECKEN: START“
+- [ ] Ring drehen: Schläger folgt **in Drehrichtung**. Wie viel Schläger-Weg pro Umdrehung fühlt sich gut an?
+      (jetzt 18° je Rastung – ggf. `kGameDegPerStep` in `src/RemoteApp.cpp`)
+- [ ] Kurz drücken: Ball fliegt; prallt an Steinen, Mitte und Schläger richtig ab
+- [ ] Antippen am Rand: Schläger springt dorthin
+- [ ] Läuft flüssig (kein Ruckeln, kein Flackern des Schlägers); Log `loop_max_ms` im Spiel
+- [ ] Ball verloren → Leben weniger; nach dem dritten „GAME OVER“, kurz drücken = neues Spiel
+- [ ] Alle Steine weg → „LEVEL 2“, schneller
+- [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig (Cover, Titel, Ring)
+- [ ] Rekord bleibt nach Neustart erhalten (Log `SPIEL … Rekord`)
+

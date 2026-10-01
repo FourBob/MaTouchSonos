@@ -114,6 +114,8 @@ bool Display::begin() {
 
 void Display::setBacklight(uint8_t level) { ledcWrite(kBacklightChannel, level); }
 
+Arduino_GFX* Display::gfx() { return hal::gfx; }
+
 bool Display::takeTouchActivity() {
     const bool seen = touchSeen;
     touchSeen = false;

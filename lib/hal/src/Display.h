@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+class Arduino_GFX;
+
 namespace hal {
 
 /**
@@ -29,6 +31,13 @@ public:
      * gelesen – also danach abfragen. Für das Energiesparen (jede Berührung zählt als Eingabe).
      */
     static bool takeTouchActivity();
+
+    /**
+     * Direkter Zugriff auf die Grafik (am LVGL vorbei) – für das Spiel, das mit 60 Bildern/s nur die
+     * bewegten Teile neu zeichnet. Solange es zeichnet, darf lv_timer_handler() nicht laufen; danach
+     * den Bildschirm mit lv_obj_invalidate() komplett neu zeichnen lassen.
+     */
+    static Arduino_GFX* gfx();
 };
 
 }  // namespace hal

@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -52,6 +53,7 @@ const MenuEntry kMenu[app::ModeController::kMenuItemCount] = {
     {MTS_SYMBOL_BACKWARD MTS_SYMBOL_FORWARD, "Spulen"},  // ⏪⏩ – LV_SYMBOL_LOOP sähe aus wie „Wiederholen“
     {LV_SYMBOL_HOME, "Räume"},
     {LV_SYMBOL_AUDIO, "Favoriten"},
+    {MTS_SYMBOL_GAMEPAD, "Spiel"},
     {LV_SYMBOL_CLOSE, "Schließen"},
 };
 lv_obj_t* menuLayer;
@@ -203,13 +205,14 @@ void NowPlayingScreen::create(SwipeHandler onSwipe) {
     lv_obj_clear_flag(menuLayer, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(menuLayer, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Einträge auf einem Kreis mit Radius 150 px: oben, rechts, unten, links
-    const int16_t offsets[app::ModeController::kMenuItemCount][2] = {{0, -150}, {150, 0}, {0, 150}, {-150, 0}};
+    // Einträge gleichmäßig auf einem Kreis mit Radius 150 px, im Uhrzeigersinn ab oben
     for (int i = 0; i < app::ModeController::kMenuItemCount; ++i) {
+        const float a = (-90.0f + 360.0f * i / app::ModeController::kMenuItemCount) * 0.017453292f;
         lv_obj_t* b = lv_obj_create(menuLayer);
         lv_obj_remove_style_all(b);
-        lv_obj_set_size(b, 96, 96);
-        lv_obj_align(b, LV_ALIGN_CENTER, offsets[i][0], offsets[i][1]);
+        lv_obj_set_size(b, 92, 92);
+        lv_obj_align(b, LV_ALIGN_CENTER, static_cast<lv_coord_t>(lroundf(150 * cosf(a))),
+                     static_cast<lv_coord_t>(lroundf(150 * sinf(a))));
         lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
         lv_obj_clear_flag(b, LV_OBJ_FLAG_CLICKABLE);
