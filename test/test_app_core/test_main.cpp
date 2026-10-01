@@ -9,6 +9,7 @@
 #include "DetentTracker.h"
 #include "IdleController.h"
 #include "RingBreakout.h"
+#include "RaceGame.h"
 #include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
@@ -669,19 +670,44 @@ void test_idle_brightness_change_reported_once() {
     TEST_ASSERT_FALSE(idle.tick(130020, false));
 }
 
-void test_mode_game_runs_until_long_press_without_timeout() {
+static ModeController::Context gameCtx() {
+    ModeController::Context c = trackCtx();
+    c.gameCount = 2;
+    return c;
+}
+
+void test_mode_game_picker_then_game_until_long_press() {
     ModeController m(10000);
     m.onLongPress(0);
-    m.onDetents(+3, 10, trackCtx());  // Spiel
-    auto a = m.onShortPress(20, trackCtx());
+    m.onDetents(+3, 10, gameCtx());  // Spiel
+    auto a = m.onShortPress(20, gameCtx());
+    TEST_ASSERT_TRUE(a.type == Act::GamePickerOpened);
+    TEST_ASSERT_EQUAL_INT(0, a.value);
+    TEST_ASSERT_TRUE(m.mode() == Mode::GamePicker);
+    a = m.onDetents(+1, 30, gameCtx());
+    TEST_ASSERT_TRUE(a.type == Act::GamePickerMoved);
+    TEST_ASSERT_EQUAL_INT(1, a.value);
+    TEST_ASSERT_TRUE(m.onDetents(+1, 40, gameCtx()).type == Act::None);  // Ende der Liste
+    a = m.onShortPress(50, gameCtx());
     TEST_ASSERT_TRUE(a.type == Act::GameStarted);
+    TEST_ASSERT_EQUAL_INT(1, a.value);
     TEST_ASSERT_TRUE(m.mode() == Mode::Game);
-    TEST_ASSERT_TRUE(m.onShortPress(100, trackCtx()).type == Act::GameButton);
-    TEST_ASSERT_TRUE(m.onDetents(+5, 200, trackCtx()).type == Act::None);  // Ring gehört dem Spiel
-    TEST_ASSERT_TRUE(m.tick(600000).type == Act::None);                    // kein Timeout
-    TEST_ASSERT_TRUE(m.mode() == Mode::Game);
+    TEST_ASSERT_TRUE(m.onShortPress(100, gameCtx()).type == Act::GameButton);
+    TEST_ASSERT_TRUE(m.onDetents(+5, 200, gameCtx()).type == Act::None);  // Ring gehört dem Spiel
+    TEST_ASSERT_TRUE(m.tick(600000).type == Act::None);                   // kein Timeout im Spiel
     TEST_ASSERT_TRUE(m.onLongPress(600100).type == Act::GameEnded);
     TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
+
+    // Spielauswahl merkt sich das zuletzt gewählte, bricht per Langdruck und Timeout ab
+    m.onLongPress(700000);
+    m.onDetents(+3, 700010, gameCtx());
+    a = m.onShortPress(700020, gameCtx());
+    TEST_ASSERT_EQUAL_INT(1, a.value);
+    TEST_ASSERT_TRUE(m.onLongPress(700030).type == Act::GamePickerCancelled);
+    m.onLongPress(800000);
+    m.onDetents(+3, 800010, gameCtx());
+    m.onShortPress(800020, gameCtx());
+    TEST_ASSERT_TRUE(m.tick(810020).type == Act::GamePickerCancelled);
 }
 
 // --- Ringbrecher (Spiel) -------------------------------------------------------------
@@ -800,6 +826,200 @@ void test_game_long_run_stays_inside_or_loses_life() {
     }
     TEST_ASSERT_EQUAL_INT(3, g.lives());     // perfekter Spieler verliert nie
     TEST_ASSERT_TRUE(g.score() > 0);
+}
+
+// --- Boxenstopp (Rennspiel) ---------------------------------------------------------
+
+using Race = app::game::RaceGame;
+static Race& freshRace() {
+    static Race r;
+    r.reset();
+    return r;
+}
+static void raceSteps(Race& r, int n) { for (int i = 0; i < n; ++i) r.step(1.0f / 60); }
+
+void test_race_countdown_then_accelerates() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    TEST_ASSERT_TRUE(r.state() == Race::State::Countdown);
+    TEST_ASSERT_EQUAL_INT(3, r.countdownSeconds());
+    raceSteps(r, 60);
+    TEST_ASSERT_EQUAL_INT(2, r.countdownSeconds());
+    TEST_ASSERT_EQUAL_FLOAT(0, r.speed());
+    raceSteps(r, 125);
+    TEST_ASSERT_TRUE(r.state() == Race::State::Racing);
+    for (int i = 0; i < 60 * 6; ++i) {  // automatisches Gas: nach 6 s auf Höchstgeschwindigkeit
+        r.setPosition(0);                 // auf der Startgeraden halten (ohne Lenken käme die Kurve)
+        r.step(1.0f / 60);
+    }
+    TEST_ASSERT_FLOAT_WITHIN(Race::kMaxSpeed * 0.02f, Race::kMaxSpeed, r.speed());
+    TEST_ASSERT_TRUE(r.speedKmh() >= 270);
+}
+
+void test_race_track_has_start_and_pit() {
+    Race& r = freshRace();
+    TEST_ASSERT_TRUE(r.segmentCount() > 900 && r.segmentCount() <= Race::kMaxSegments);
+    TEST_ASSERT_TRUE(r.segment(0).flags & Race::kStartLine);
+    TEST_ASSERT_TRUE(r.segment(Race::kPitEntrySegment).flags & Race::kPitStrip);
+    bool left = false, right = false;
+    for (int i = 0; i < r.segmentCount(); ++i) {
+        left = left || r.segment(i).curve < -3;
+        right = right || r.segment(i).curve > 3;
+    }
+    TEST_ASSERT_TRUE(left && right);
+}
+
+void test_race_steering_and_wheel_centering() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(0);  // Gerade am Start
+    r.setSpeed(Race::kMaxSpeed);
+    r.steer(+8);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.48f, r.steering());
+    raceSteps(r, 10);
+    TEST_ASSERT_TRUE(r.playerX() > 0.05f);    // nach rechts gelenkt
+    raceSteps(r, 60);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0, r.steering());  // Lenkrad läuft in die Mitte zurück
+    r.steer(-100);
+    TEST_ASSERT_EQUAL_FLOAT(-1, r.steering());  // voller Einschlag begrenzt
+}
+
+void test_race_curve_pushes_outward() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    int curveSeg = 0;
+    for (int i = 0; i < r.segmentCount(); ++i)
+        if (r.segment(i).curve >= 5.9f) { curveSeg = i; break; }
+    r.setPosition(curveSeg * Race::kSegmentLength);
+    r.setSpeed(Race::kMaxSpeed);
+    raceSteps(r, 15);
+    TEST_ASSERT_TRUE(r.playerX() < -0.3f);  // Rechtskurve drückt nach links (außen)
+}
+
+void test_race_off_road_slows_down() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(0);
+    r.setSpeed(Race::kMaxSpeed);
+    r.setPlayerX(1.8f);
+    raceSteps(r, 60);
+    TEST_ASSERT_TRUE(r.speed() < Race::kMaxSpeed * 0.4f);
+}
+
+void test_race_brake() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setSpeed(Race::kMaxSpeed);
+    r.setBrake(true);
+    raceSteps(r, 60);
+    TEST_ASSERT_EQUAL_FLOAT(0, r.speed());
+}
+
+void test_race_lap_counting_and_finish() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(r.trackLength() - 100);
+    r.setSpeed(Race::kMaxSpeed);
+    raceSteps(r, 2);
+    TEST_ASSERT_EQUAL_INT(2, r.lap());
+    r.setLap(Race::kLaps);
+    r.setPosition(r.trackLength() - 100);
+    raceSteps(r, 2);
+    TEST_ASSERT_TRUE(r.state() == Race::State::Finished);
+    r.press();  // neues Rennen
+    TEST_ASSERT_TRUE(r.state() == Race::State::Countdown);
+}
+
+void test_race_fuel_and_tires_wear() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setSpeed(Race::kMaxSpeed);
+    const int lapSteps = static_cast<int>(r.trackLength() / Race::kMaxSpeed * 60) + 1;
+    for (int i = 0; i < lapSteps; ++i) {  // eine Runde, ideal auf der Straße gehalten
+        r.setPlayerX(0);
+        r.step(1.0f / 60);
+    }
+    TEST_ASSERT_TRUE(r.fuel() < 0.8f && r.fuel() > 0.5f);
+    TEST_ASSERT_TRUE(r.tireWear(Race::FrontLeft) > 0.05f);
+    r.setFuel(0);
+    raceSteps(r, 300);
+    TEST_ASSERT_TRUE(r.speed() <= Race::kMaxSpeed * 0.16f);  // leer: nur noch langsam
+    r.setFuel(1);
+    r.setWear(Race::RearRight, 1.0f);
+    TEST_ASSERT_TRUE(r.flatTire());
+    raceSteps(r, 300);
+    TEST_ASSERT_TRUE(r.speed() <= Race::kMaxSpeed * 0.41f);  // Platten
+}
+
+void test_race_pit_stop() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setWear(Race::FrontLeft, 0.9f);
+    r.setFuel(0.2f);
+    r.setPosition((Race::kPitEntrySegment - 1) * Race::kSegmentLength);
+    r.setSpeed(Race::kMaxSpeed * 0.5f);
+    r.setPlayerX(1.0f);  // rechts auf dem Boxenstreifen
+    raceSteps(r, 20);
+    TEST_ASSERT_TRUE(r.state() == Race::State::Pit);
+    TEST_ASSERT_EQUAL_INT(Race::FrontLeft, r.pitSelection());
+
+    r.press();  // Reifen vorne links wechseln
+    TEST_ASSERT_TRUE(r.pitWorking());
+    r.pitSelect(+1);  // während der Arbeit gesperrt
+    TEST_ASSERT_EQUAL_INT(Race::FrontLeft, r.pitSelection());
+    raceSteps(r, 100);
+    TEST_ASSERT_FALSE(r.pitWorking());
+    TEST_ASSERT_EQUAL_FLOAT(0, r.tireWear(Race::FrontLeft));
+
+    r.pitSelect(+1);  // im Uhrzeigersinn: vorne rechts, LOS
+    TEST_ASSERT_EQUAL_INT(Race::FrontRight, r.pitSelection());
+    r.pitSelect(+1);
+    TEST_ASSERT_EQUAL_INT(Race::Go, r.pitSelection());
+    r.pitSelect(+3);  // … hinten rechts, hinten links, Tank
+    TEST_ASSERT_EQUAL_INT(Race::Fuel, r.pitSelection());
+    const uint32_t before = r.raceMs();
+    r.press();
+    raceSteps(r, 60 * 4);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, r.fuel());
+    TEST_ASSERT_FALSE(r.fueling());
+    TEST_ASSERT_TRUE(r.raceMs() - before >= 3900);  // die Uhr läuft in der Box weiter
+
+    r.pitSelect(-3);  // gegen den Uhrzeigersinn: hinten links, hinten rechts, LOS
+    TEST_ASSERT_EQUAL_INT(Race::Go, r.pitSelection());
+    r.press();
+    TEST_ASSERT_TRUE(r.state() == Race::State::Racing);
+    TEST_ASSERT_FLOAT_WITHIN(1, Race::kPitExitSegment * Race::kSegmentLength, r.position());
+    r.pitSelect(-1);  // außerhalb der Box ohne Wirkung
+}
+
+void test_race_no_pit_when_left() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition((Race::kPitEntrySegment - 1) * Race::kSegmentLength);
+    r.setSpeed(Race::kMaxSpeed * 0.5f);
+    r.setPlayerX(0.2f);
+    raceSteps(r, 20);
+    TEST_ASSERT_TRUE(r.state() == Race::State::Racing);
+}
+
+void test_race_collision_slows() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(0);
+    r.setSpeed(Race::kMaxSpeed);
+    r.placeCar(0, Race::kPlayerZ + 300, 0.0f, Race::kMaxSpeed * 0.4f);
+    raceSteps(r, 5);
+    TEST_ASSERT_TRUE(r.speed() < Race::kMaxSpeed * 0.5f);
+    TEST_ASSERT_TRUE(r.tireWear(Race::FrontLeft) >= 0.04f);
 }
 
 // --- ImageOps (Albumcover) --------------------------------------------------------
@@ -1063,7 +1283,7 @@ int main(int, char**) {
     RUN_TEST(test_idle_input_while_dimmed_is_executed);
     RUN_TEST(test_idle_wake_from_off_swallows_input_and_grace);
     RUN_TEST(test_idle_brightness_change_reported_once);
-    RUN_TEST(test_mode_game_runs_until_long_press_without_timeout);
+    RUN_TEST(test_mode_game_picker_then_game_until_long_press);
     RUN_TEST(test_game_start_serving_ball_follows_paddle);
     RUN_TEST(test_game_angle_helpers);
     RUN_TEST(test_game_paddle_returns_ball_inward);
@@ -1073,6 +1293,17 @@ int main(int, char**) {
     RUN_TEST(test_game_hub_bounces);
     RUN_TEST(test_game_last_brick_next_level);
     RUN_TEST(test_game_long_run_stays_inside_or_loses_life);
+    RUN_TEST(test_race_countdown_then_accelerates);
+    RUN_TEST(test_race_track_has_start_and_pit);
+    RUN_TEST(test_race_steering_and_wheel_centering);
+    RUN_TEST(test_race_curve_pushes_outward);
+    RUN_TEST(test_race_off_road_slows_down);
+    RUN_TEST(test_race_brake);
+    RUN_TEST(test_race_lap_counting_and_finish);
+    RUN_TEST(test_race_fuel_and_tires_wear);
+    RUN_TEST(test_race_pit_stop);
+    RUN_TEST(test_race_no_pit_when_left);
+    RUN_TEST(test_race_collision_slows);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

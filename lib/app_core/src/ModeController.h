@@ -10,7 +10,7 @@ namespace app {
  *   Normal ──lang──▶ Menü ──kurz auf „Spulen“────▶ Spulen
  *     ▲               │    ├─kurz auf „Räume“─────▶ Raumwahl
  *     │               │    ├─kurz auf „Favoriten“─▶ Favoritenwahl
- *     │               │    └─kurz auf „Spiel“─────▶ Spiel (bis Langdruck, kein Timeout)
+ *     │               │    └─kurz auf „Spiel“─────▶ Spielauswahl ──kurz──▶ Spiel (bis Langdruck, kein Timeout)
  *     └──lang/Timeout─┘  Spulen/Raum/Favorit: kurz = übernehmen, lang/Timeout = abbrechen,
  *                        beides zurück nach Normal
  *
@@ -21,6 +21,7 @@ namespace app {
  * | Spulen   | Zielposition ändern  | dorthin springen     | abbrechen    |
  * | Raum     | Raum wählen          | Raum übernehmen      | abbrechen    |
  * | Favorit  | Favorit wählen       | abspielen            | abbrechen    |
+ * | Spielwahl| Spiel wählen         | starten              | abbrechen    |
  * | Spiel    | (das Spiel liest den Ring selbst) | Spiel-Taste | beenden    |
  *
  * Menü, Spulen und Auswahllisten schließen sich nach `timeoutMs` ohne Eingabe von selbst.
@@ -29,7 +30,7 @@ namespace app {
  */
 class ModeController {
 public:
-    enum class Mode : uint8_t { Normal, Menu, Scrub, RoomPicker, FavoritePicker, Game };
+    enum class Mode : uint8_t { Normal, Menu, Scrub, RoomPicker, FavoritePicker, GamePicker, Game };
 
     /** Menüeinträge im Uhrzeigersinn, beginnend oben. */
     enum class MenuItem : uint8_t { Scrub, Rooms, Favorites, Game, Close };
@@ -55,7 +56,10 @@ public:
             FavoritePickerMoved,      ///< value = markierter Favorit (Index)
             FavoriteSelected,         ///< value = gewählter Favorit (Index) → abspielen
             FavoritePickerCancelled,
-            GameStarted,
+            GamePickerOpened,         ///< value = markiertes Spiel
+            GamePickerMoved,          ///< value = markiertes Spiel
+            GamePickerCancelled,
+            GameStarted,              ///< value = gewähltes Spiel
             GameButton,               ///< kurzer Druck im Spiel
             GameEnded,
             NotAvailable,      ///< value = MenuItem, das gerade nicht geht (z. B. Spulen bei Radio)
@@ -72,6 +76,7 @@ public:
         int roomCount = 0;     ///< Anzahl gefundener Räume/Gruppen
         int currentRoom = 0;   ///< Index des aktiven Raums
         int favoriteCount = 0; ///< Anzahl geladener Favoriten
+        int gameCount = 0;     ///< Anzahl Spiele
     };
 
     explicit ModeController(uint32_t timeoutMs = 10000) : timeoutMs_(timeoutMs) {}
@@ -81,6 +86,7 @@ public:
     int scrubTarget() const { return scrubTarget_; }
     int roomPickerIndex() const { return pickerIndex_; }
     int favoritePickerIndex() const { return favoriteIndex_; }
+    int gamePickerIndex() const { return gameIndex_; }
 
     Action onLongPress(uint32_t nowMs) {
         touch(nowMs);
@@ -101,6 +107,9 @@ public:
             case Mode::FavoritePicker:
                 mode_ = Mode::Normal;
                 return {Action::Type::FavoritePickerCancelled, 0};
+            case Mode::GamePicker:
+                mode_ = Mode::Normal;
+                return {Action::Type::GamePickerCancelled, 0};
             case Mode::Game:
                 mode_ = Mode::Normal;
                 return {Action::Type::GameEnded, 0};
@@ -124,6 +133,9 @@ public:
             case Mode::FavoritePicker:
                 mode_ = Mode::Normal;
                 return {Action::Type::FavoriteSelected, favoriteIndex_};
+            case Mode::GamePicker:
+                mode_ = Mode::Game;
+                return {Action::Type::GameStarted, gameIndex_};
             case Mode::Game:
                 return {Action::Type::GameButton, 0};
         }
@@ -157,6 +169,9 @@ public:
             case Mode::FavoritePicker:
                 if (!moveClamped(favoriteIndex_, detents, ctx.favoriteCount)) return {};
                 return {Action::Type::FavoritePickerMoved, favoriteIndex_};
+            case Mode::GamePicker:
+                if (!moveClamped(gameIndex_, detents, ctx.gameCount)) return {};
+                return {Action::Type::GamePickerMoved, gameIndex_};
             case Mode::Game:
                 return {};  // das Spiel liest die feineren Rohschritte selbst
         }
@@ -174,6 +189,7 @@ public:
             case Mode::Scrub: return {Action::Type::ScrubCancelled, 0};
             case Mode::RoomPicker: return {Action::Type::RoomPickerCancelled, 0};
             case Mode::FavoritePicker: return {Action::Type::FavoritePickerCancelled, 0};
+            case Mode::GamePicker: return {Action::Type::GamePickerCancelled, 0};
             case Mode::Normal:
             case Mode::Game: break;
         }
@@ -235,8 +251,13 @@ private:
                 if (favoriteIndex_ < 0) favoriteIndex_ = 0;
                 return {Action::Type::FavoritePickerOpened, favoriteIndex_};
             case MenuItem::Game:
-                mode_ = Mode::Game;
-                return {Action::Type::GameStarted, 0};
+                if (ctx.gameCount <= 0) {
+                    mode_ = Mode::Normal;
+                    return {Action::Type::NotAvailable, static_cast<int>(item)};
+                }
+                mode_ = Mode::GamePicker;
+                if (gameIndex_ >= ctx.gameCount) gameIndex_ = ctx.gameCount - 1;
+                return {Action::Type::GamePickerOpened, gameIndex_};
         }
         return {};
     }
@@ -247,6 +268,7 @@ private:
     int scrubTarget_ = 0;
     int pickerIndex_ = 0;
     int favoriteIndex_ = 0;
+    int gameIndex_ = 0;
     uint32_t lastInputMs_ = 0;
 };
 

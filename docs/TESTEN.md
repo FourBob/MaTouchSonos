@@ -436,3 +436,20 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig (Cover, Titel, Ring)
 - [ ] Rekord bleibt nach Neustart erhalten (Log `SPIEL … Rekord`)
 
+## Checkliste Easteregg „Boxenstopp“
+
+- [ ] Menü „Spiel“ → Spielauswahl mit „Ringbrecher“ und „Boxenstopp“; Ring wählt, kurz drücken startet,
+      lang drücken bricht ab
+- [ ] Boxenstopp: Countdown 3‑2‑1, dann fährt das Auto von selbst los
+- [ ] Ring lenkt **in Drehrichtung**, die Straße krümmt sich in Kurven, die Berge ziehen mit
+- [ ] Bildschirmmitte berühren → bremst; auf dem Gras wird man langsamer
+- [ ] Gegner kommen näher und lassen sich überholen; Auffahren kostet Tempo
+- [ ] Anzeige oben: Runde/Zeit, km/h, Sprit-Balken, 4 Reifen-Kästchen (grün → gelb → orange → rot)
+- [ ] Vor der Startlinie: „BOX >>“; rechts auf die gelbe Spur → Boxenbild (Auto von oben)
+- [ ] In der Box: Ring wählt reihum (vorne links, vorne rechts, LOS, hinten rechts, hinten links, Tank);
+      Reifen wechseln („WECHSEL %“), Tanken an/aus („TANKEN %“), LOS → weiter auf der Strecke
+- [ ] Ohne Boxenstopp: „TANK LEER“ bzw. „PLATTEN“, das Auto wird langsam
+- [ ] Nach 5 Runden „ZIEL!“ mit Zeit und Bestzeit; kurz drücken = neues Rennen
+- [ ] Flüssig? (Log `loop_max_ms` im Spiel), Lenkgefühl ok? (sonst `kSteerPerStep` in `RaceGame.h`)
+- [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig; Bestzeit bleibt nach Neustart
+

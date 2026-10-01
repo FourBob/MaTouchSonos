@@ -24,6 +24,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <new>
 
 #include "AVTransport.h"
 #include "App.h"
@@ -38,9 +39,12 @@
 #include "NowPlaying.h"
 #include "NowPlayingScreen.h"
 #include "PlaybackController.h"
+#include "RaceGame.h"
+#include "RaceScreen.h"
 #include "ProgressTracker.h"
 #include "RingBreakout.h"
 #include "SonosLink.h"
+#include "symbols.h"
 #include "Touch.h"
 #include "VolumeController.h"
 #if __has_include("secrets.h")
@@ -90,6 +94,20 @@ uint32_t gameNextStepMs = 0;
 int gameHighscore = 0;            // NVS-Schlüssel "game_hi"
 uint32_t gameLastRingMs = 0;      // letzte Ringbewegung im Spiel
 bool gameWasTouched = false;
+
+// Easteregg „Boxenstopp“ (Rennspiel). Das Spiel (Strecke ~9 KB) liegt im PSRAM, angelegt beim ersten Start.
+constexpr uint32_t kRaceStepMs = 16;
+constexpr float kRaceBrakeRadius = 140.0f;  // Bremse: Finger in der Bildschirmmitte
+app::game::RaceGame* race = nullptr;
+RaceScreen raceScreen;
+uint32_t raceNextStepMs = 0;
+uint32_t raceBestMs = 0;          // NVS-Schlüssel "race_best"
+
+enum class ActiveGame : uint8_t { Breakout, Race };
+constexpr int kGameCount = 2;
+const char* const kGameNames[kGameCount] = {"Ringbrecher", "Boxenstopp"};
+const char* const kGameDetails[kGameCount] = {"Ring dreht den Schläger", "Ring lenkt, Mitte bremst"};
+ActiveGame activeGame = ActiveGame::Breakout;
 
 net::FavoritesInfo* favorites = nullptr;  // PSRAM (~10 KB), in setup() angelegt
 uint32_t favoritesVersion = 0;
@@ -306,6 +324,7 @@ app::ModeController::Context modeContext(uint32_t now) {
     c.roomCount = rooms.count;
     c.currentRoom = rooms.selected;
     c.favoriteCount = favorites ? favorites->count : 0;
+    c.gameCount = kGameCount;
     return c;
 }
 
@@ -357,7 +376,12 @@ const char* menuItemName(int item) {
 
 // --- Spiel (Easteregg) -------------------------------------------------------------
 
-void startGame(uint32_t now) {
+void showGamePicker(int index) {
+    if (index < 0 || index >= kGameCount) index = 0;
+    screen.showPicker(MTS_SYMBOL_GAMEPAD "  Spiel wählen", kGameNames, kGameCount, index, -1, kGameDetails[index]);
+}
+
+void startBreakout(uint32_t now) {
     gameHighscore = prefs.isKey("game_hi") ? static_cast<int>(prefs.getUInt("game_hi", 0)) : 0;
     game.reset();
     gameScreen.enter(game, gameHighscore);
@@ -373,11 +397,83 @@ void saveHighscore() {
     }
 }
 
+void startRace(uint32_t now) {
+    if (!race) {
+        void* mem = ps_malloc(sizeof(app::game::RaceGame));
+        if (!mem) mem = malloc(sizeof(app::game::RaceGame));
+        if (!mem) {
+            Serial.println(F("SPIEL Boxenstopp: kein Speicher"));
+            return;
+        }
+        race = new (mem) app::game::RaceGame();
+    }
+    raceBestMs = prefs.isKey("race_best") ? prefs.getUInt("race_best", 0) : 0;
+    race->reset();
+    raceScreen.enter(*race, raceBestMs);
+    raceNextStepMs = now;
+    Serial.printf("SPIEL Boxenstopp gestartet (Bestzeit %lu ms)\n", static_cast<unsigned long>(raceBestMs));
+}
+
+void startGame(int index, uint32_t now) {
+    activeGame = index == 1 ? ActiveGame::Race : ActiveGame::Breakout;
+    if (activeGame == ActiveGame::Race) startRace(now);
+    else startBreakout(now);
+}
+
+void gamePress() {
+    if (activeGame == ActiveGame::Race) {
+        if (race) race->press();
+    } else {
+        game.press();
+    }
+}
+
 void endGame() {
-    saveHighscore();
     lv_obj_invalidate(lv_scr_act());  // Oberfläche komplett neu zeichnen
     lastShownSecond = -2;
+    if (activeGame == ActiveGame::Race) {
+        if (race) Serial.printf("SPIEL Boxenstopp beendet: Runde %d, %lu ms\n", race->lap(), static_cast<unsigned long>(race->raceMs()));
+        return;
+    }
+    saveHighscore();
     Serial.printf("SPIEL beendet: %d Punkte, Level %d\n", game.score(), game.level());
+}
+
+/** Ein Durchlauf im Rennspiel: Ring = Lenkrad (in der Box: Auswahl), Mitte antippen = Bremse. */
+void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
+    if (!race) return;
+    if (race->state() == app::game::RaceGame::State::Pit) race->pitSelect(static_cast<int>(detents));
+    else race->steer(rawSteps);
+    if (rawSteps != 0) idle.onInput(now);
+    int16_t tx, ty;
+    bool brake = false;
+    if (hal::Touch::read(tx, ty)) {
+        const float dx = tx - 240.0f, dy = ty - 240.0f;
+        brake = dx * dx + dy * dy < kRaceBrakeRadius * kRaceBrakeRadius;
+        idle.onInput(now);
+    }
+    race->setBrake(brake);
+    const auto before = race->state();
+    int steps = 0;
+    while (static_cast<int32_t>(now - raceNextStepMs) >= 0 && steps < 4) {
+        race->step(kRaceStepMs / 1000.0f);
+        raceNextStepMs += kRaceStepMs;
+        ++steps;
+    }
+    if (static_cast<int32_t>(now - raceNextStepMs) >= 0) raceNextStepMs = now + kRaceStepMs;  // nicht aufholen
+    if (race->state() != app::game::RaceGame::State::Finished) idle.onInput(now);  // nicht dimmen beim Fahren
+    if (before != race->state() && race->state() == app::game::RaceGame::State::Finished) {
+        const uint32_t previous = raceBestMs;
+        if (raceBestMs == 0 || race->raceMs() < raceBestMs) {
+            raceBestMs = race->raceMs();
+            prefs.putUInt("race_best", raceBestMs);
+        }
+        Serial.printf("SPIEL Boxenstopp im Ziel: %lu ms (Bestzeit vorher %lu ms)\n",
+                      static_cast<unsigned long>(race->raceMs()), static_cast<unsigned long>(previous));
+        raceScreen.render(*race, previous);  // „Neue Bestzeit!“ gegen die alte prüfen
+        return;
+    }
+    raceScreen.render(*race, raceBestMs);
 }
 
 /** Ein Durchlauf im Spiel: Eingaben, Spielschritte im 60-Hz-Takt, Anzeige. */
@@ -483,12 +579,22 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
         case T::FavoritePickerCancelled:
             screen.hidePicker();
             break;
-        case T::GameStarted:
+        case T::GamePickerOpened:
             screen.hideMenu();
-            startGame(now);
+            showGamePicker(a.value);
+            break;
+        case T::GamePickerMoved:
+            showGamePicker(a.value);
+            break;
+        case T::GamePickerCancelled:
+            screen.hidePicker();
+            break;
+        case T::GameStarted:
+            screen.hidePicker();
+            startGame(a.value, now);
             break;
         case T::GameButton:
-            game.press();
+            gamePress();
             break;
         case T::GameEnded:
             endGame();
@@ -624,7 +730,8 @@ void loop() {
     expireMessage(now);
     if (modes.mode() == app::ModeController::Mode::Game) {
         // Das Spiel zeichnet selbst (am LVGL vorbei) – LVGL pausiert so lange
-        gameLoop(now, raw);
+        if (activeGame == ActiveGame::Race) raceLoop(now, raw, d);
+        else gameLoop(now, raw);
         if (idle.tick(now, true)) hal::Display::setBacklight(idle.level());
         diag::logStatusPeriodically(millis(), now);
         delay(2);

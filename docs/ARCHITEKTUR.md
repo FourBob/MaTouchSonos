@@ -254,6 +254,27 @@ die Steine liegen als 4 Ringe um die Mitte (10/14/18/22 Segmente), die Mitte zei
   kurz drücken = Ball abschießen/neu starten, lang drücken = Ende. Kein Menü-Timeout, Display dimmt nicht beim Spielen.
 - **Rekord:** im NVS (`game_hi`). Musik und Live-Updates laufen währenddessen normal weiter.
 
+## Easteregg: „Boxenstopp“
+
+Rennspiel nach dem Vorbild von *Pitstop II* (Solo), zweiter Eintrag der Spielauswahl (Menü **Spiel** → Ring
+wählt, Drücken startet). 5 Runden gegen 10 Gegner auf einer Strecke mit Kurven; Sprit und Reifen verschleißen,
+deshalb muss man in die Box.
+
+- **Logik:** `app::game::RaceGame` (app_core, getestet): Strecke aus ~1000 Segmenten zu 200 Einheiten, jede mit
+  Krümmung und Merkern (Startlinie, Boxenschild, Boxenspur). Fester Zeitschritt 1/60 s. Tempo, Fliehkraft in
+  Kurven, Gras bremst, Auffahren auf einen Gegner kostet Tempo. Sprit reicht für gut 3 Runden; die Reifen auf der
+  Kurvenaußenseite verschleißen schneller, abgefahrene Reifen kosten Grip, ein Platten kostet Tempo.
+- **Box:** Rechts auf der gelben Boxenspur hinter der Startlinie halten. Dann zeigt der Bildschirm das Auto von oben,
+  rundherum vier Reifen (Farbe = Zustand), Tank und LOS, im Uhrzeigersinn so angeordnet, wie man sie mit dem Ring
+  erreicht. Ein Reifenwechsel dauert 1,5 s, Tanken läuft, bis man es stoppt. Die Uhr läuft weiter.
+- **Anzeige:** `RaceScreen` zeichnet direkt über Arduino_GFX. Die Straße ist klassisches Pseudo-3D: Segmente von
+  vorn nach hinten projiziert, Krümmung als aufsummierter Querversatz, jede Bildzeile genau einmal und nur
+  innerhalb des runden Bildschirms. Himmel und Anzeigen werden nur bei Änderung gezeichnet, die Berge verschieben
+  sich in Kurven.
+- **Eingabe:** Ring = Lenkrad (Rohschritte, das Lenkrad stellt sich von selbst zurück), Bildschirmmitte berühren =
+  Bremse, in der Box: Ring wählt, kurz drücken führt aus. Lang drücken = Ende.
+- **Bestzeit:** im NVS (`race_best`). Das Spielobjekt (~9 KB Strecke) liegt im PSRAM.
+
 ## Designentscheidungen
 
 | Entscheidung | Begründung |
