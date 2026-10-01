@@ -15,10 +15,12 @@
 #include "AlbumArt.h"
 #include "CoverLoader.h"
 #include "Favorites.h"
+#include "Gena.h"
 #include "NowPlaying.h"
 #include "RenderingControl.h"
 #include "Soap.h"
 #include "Topology.h"
+#include "Xml.h"
 
 namespace net {
 namespace {
@@ -27,6 +29,15 @@ constexpr uint16_t kSonosPort = 1400;
 constexpr uint32_t kHttpConnectTimeoutMs = 1000;
 constexpr uint16_t kHttpTimeoutMs = 1200;        // Speaker antwortet normal in 30–60 ms
 constexpr uint32_t kPollIntervalMs = 1500;       // Zustand, Titel, Lautstärke abfragen
+constexpr uint32_t kPollWithEventsMs = 10000;    // mit Events nur noch als Sicherheitsnetz
+constexpr uint32_t kTopologyWithEventsMs = 120000;
+constexpr uint32_t kEventPollDelayMs = 150;      // Events kommen oft in Schüben – kurz sammeln
+constexpr uint32_t kEventMinPollGapMs = 400;     // höchstens so oft wegen Events abfragen
+constexpr uint32_t kTopologyEventDelayMs = 500;
+constexpr int kSubscribeTimeoutS = 1800;         // Abo-Dauer; erneuert nach der Hälfte
+constexpr uint32_t kSubscribeRetryMs = 60000;    // Abo fehlgeschlagen: später erneut
+constexpr uint32_t kNotifyReadTimeoutMs = 500;
+constexpr size_t kNotifyMaxBytes = 64 * 1024;    // längere Events nur bis hier lesen (Rest verwerfen)
 constexpr uint32_t kPollAfterCommandMs = 400;    // nach einem Befehl schnell bestätigen
 constexpr uint32_t kQuickRetryMs = 500;          // nach einem einzelnen Aussetzer
 constexpr uint32_t kRetryIntervalMs = 5000;      // wenn der Speaker als nicht erreichbar gilt
@@ -226,6 +237,24 @@ struct Link {
     sonos::MediaInfo media;
     bool hasMedia = false;
 
+    // Live-Updates (GENA): Abos am Koordinator des aktiven Raums
+    struct Subscription {
+        const sonos::gena::EventService* service = nullptr;
+        std::string sid;
+        uint32_t renewAt = 0;
+        bool active() const { return !sid.empty(); }
+    };
+    Subscription subs[3];           // Wiedergabe, Lautstärke (Raum oder Gruppe), Topologie
+    std::string subscribedIp;       // für diesen Koordinator gelten die Abos
+    bool subscribedGroup = false;
+    uint32_t nextSubscribeAt = 0;
+    bool eventPollPending = false;  // Event eingegangen → bald abfragen
+    bool topologyPending = false;
+    uint32_t eventActionAt = 0;
+    uint32_t lastPollAt = 0;
+
+    bool eventsActive() const { return subs[0].active() && subs[1].active() && subs[2].active(); }
+
     // Favoriten
     bool favoritesLoaded = false;
     uint32_t favoritesTriedAt = 0;  // 0 = noch nie
@@ -388,7 +417,8 @@ void poll(Link& link) {
                       np.title.c_str());
     }
     link.synced = true;
-    link.nextPollAt = millis() + kPollIntervalMs;
+    link.lastPollAt = millis();
+    link.nextPollAt = millis() + (link.eventsActive() ? kPollWithEventsMs : kPollIntervalMs);
     publishNowPlaying(np, fetchedAt);
     // Cover: Kandidaten je nach Dienst; unveränderte Kandidaten ignoriert der Lader selbst.
     CoverLoader::request(sonos::art::candidates(np, link.targetIp));
@@ -459,6 +489,166 @@ void sendTransport(Link& link, const Command& command) {
         post(Event::Type::TransportError, r.upnpErrorCode, r.error.c_str());
         Serial.printf("SONOS %s abgelehnt: %s\n", name, r.error.c_str());
         link.nextPollAt = millis() + kPollAfterCommandMs;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Live-Updates (Schritt 9): GENA-Abos und Empfang der Events
+// ---------------------------------------------------------------------------
+
+WiFiServer gEventServer(sonos::gena::kCallbackPort);
+bool gEventServerStarted = false;
+
+/** Abonnieren bzw. erneuern (mit bestehender SID). Schlägt Erneuern fehl, wird neu abonniert. */
+bool subscribe(Link::Subscription& sub, const std::string& ip, const sonos::gena::EventService& service) {
+    const bool renew = sub.active() && sub.service == &service;
+    HTTPClient http;
+    http.setConnectTimeout(kHttpConnectTimeoutMs);
+    http.setTimeout(kHttpTimeoutMs);
+    if (!http.begin(String("http://") + ip.c_str() + ":" + kSonosPort + service.eventPath)) return false;
+    if (renew) {
+        http.addHeader("SID", sub.sid.c_str());
+    } else {
+        http.addHeader("CALLBACK", String("<http://") + WiFi.localIP().toString() + ":" + sonos::gena::kCallbackPort +
+                                       service.callbackPath + ">");
+        http.addHeader("NT", "upnp:event");
+    }
+    http.addHeader("TIMEOUT", String("Second-") + kSubscribeTimeoutS);
+    const char* keys[] = {"SID", "TIMEOUT"};
+    http.collectHeaders(keys, 2);
+    const int status = http.sendRequest("SUBSCRIBE");
+    const std::string sid = http.header("SID").c_str();
+    const int timeout = sonos::gena::parseTimeout(http.header("TIMEOUT").c_str());
+    http.end();
+
+    if (status != 200 || sid.empty()) {
+        Serial.printf("EVENTS %s %s fehlgeschlagen (HTTP %d)\n", service.name, renew ? "erneuern" : "abonnieren",
+                      status);
+        sub.sid.clear();
+        return renew ? subscribe(sub, ip, service) : false;  // abgelaufen? dann frisch abonnieren
+    }
+    const int seconds = timeout > 0 ? timeout : kSubscribeTimeoutS;
+    sub.service = &service;
+    sub.sid = sid;
+    sub.renewAt = millis() + static_cast<uint32_t>(seconds) * 500;  // nach der Hälfte erneuern
+    if (!renew) Serial.printf("EVENTS %s abonniert (%d s)\n", service.name, seconds);
+    return true;
+}
+
+void unsubscribe(Link::Subscription& sub, const std::string& ip) {
+    if (!sub.active() || ip.empty()) return;
+    HTTPClient http;
+    http.setConnectTimeout(kHttpConnectTimeoutMs);
+    http.setTimeout(kHttpTimeoutMs);
+    if (http.begin(String("http://") + ip.c_str() + ":" + kSonosPort + sub.service->eventPath)) {
+        http.addHeader("SID", sub.sid.c_str());
+        http.sendRequest("UNSUBSCRIBE");
+        http.end();
+    }
+    sub.sid.clear();
+}
+
+/** Abos zum aktiven Raum herstellen, erneuern und bei Raumwechsel umziehen. */
+void manageSubscriptions(Link& link, uint32_t now) {
+    if (!gEventServerStarted) {
+        gEventServer.begin();
+        gEventServerStarted = true;
+        Serial.printf("EVENTS: Empfang auf Port %d\n", sonos::gena::kCallbackPort);
+    }
+    if (link.targetIp != link.subscribedIp || link.targetIsGroup != link.subscribedGroup) {
+        for (auto& sub : link.subs) unsubscribe(sub, link.subscribedIp);
+        link.subscribedIp = link.targetIp;
+        link.subscribedGroup = link.targetIsGroup;
+        link.nextSubscribeAt = now;
+    }
+    const sonos::gena::EventService* wanted[3] = {
+        &sonos::gena::AVTransport,
+        link.targetIsGroup ? &sonos::gena::GroupRenderingControl : &sonos::gena::RenderingControl,
+        &sonos::gena::ZoneGroupTopology,
+    };
+    for (int i = 0; i < 3; ++i) {
+        Link::Subscription& sub = link.subs[i];
+        if (sub.active() && static_cast<int32_t>(now - sub.renewAt) >= 0) {
+            subscribe(sub, link.targetIp, *wanted[i]);
+        } else if (!sub.active() && static_cast<int32_t>(now - link.nextSubscribeAt) >= 0) {
+            if (!subscribe(sub, link.targetIp, *wanted[i])) link.nextSubscribeAt = now + kSubscribeRetryMs;
+        }
+    }
+}
+
+/** WLAN weg: Abos sind verloren (abmelden geht nicht mehr) – nach dem Wiederverbinden neu. */
+void dropSubscriptions(Link& link) {
+    for (auto& sub : link.subs) sub.sid.clear();
+    link.subscribedIp.clear();
+}
+
+/** Ein Event ist eingegangen: fürs Log auswerten und eine Abfrage einplanen. */
+void onEvent(Link& link, const sonos::gena::EventService& service, const std::string& body, uint32_t now) {
+    std::string value;
+    if (&service == &sonos::gena::ZoneGroupTopology) {
+        Serial.println(F("EVENT Topologie geändert"));
+        link.topologyPending = true;
+        link.eventActionAt = now + kTopologyEventDelayMs;
+        return;
+    }
+    if (&service == &sonos::gena::AVTransport) {
+        if (sonos::gena::eventValue(sonos::gena::lastChange(body), "TransportState", value)) {
+            Serial.printf("EVENT Wiedergabe: %s\n", value.c_str());
+        } else {
+            Serial.println(F("EVENT Wiedergabe"));
+        }
+    } else if (&service == &sonos::gena::RenderingControl) {
+        if (sonos::gena::eventValue(sonos::gena::lastChange(body), "Volume", value, "Master"))
+            Serial.printf("EVENT Lautstärke %s\n", value.c_str());
+    } else {
+        value = sonos::xml::findElement(body, "GroupVolume");
+        if (!value.empty()) Serial.printf("EVENT Gruppenlautstärke %s\n", value.c_str());
+    }
+    if (!link.eventPollPending) {
+        link.eventPollPending = true;
+        link.eventActionAt = now + kEventPollDelayMs;
+    }
+}
+
+/** Eingehende NOTIFY-Anfragen annehmen (nicht blockierend, höchstens ein paar pro Durchlauf). */
+void handleNotifications(Link& link) {
+    for (int n = 0; n < 4; ++n) {
+        WiFiClient client = gEventServer.available();
+        if (!client) return;
+        std::string raw;
+        raw.reserve(2048);
+        size_t total = 0;
+        sonos::gena::Request req;
+        size_t head = 0;
+        bool haveHead = false;
+        uint8_t buf[512];
+        const uint32_t start = millis();
+        while (millis() - start < kNotifyReadTimeoutMs) {
+            const int available = client.available();
+            if (available <= 0) {
+                if (!client.connected()) break;
+                vTaskDelay(1);
+                continue;
+            }
+            const int got = client.read(buf, available < static_cast<int>(sizeof(buf)) ? available : sizeof(buf));
+            if (got <= 0) continue;
+            total += got;
+            if (raw.size() < kNotifyMaxBytes) raw.append(reinterpret_cast<char*>(buf), got);
+            if (!haveHead) haveHead = sonos::gena::parseRequestHead(raw, req, head);
+            if (haveHead && total >= head + static_cast<size_t>(req.contentLength)) break;
+        }
+        client.print(sonos::gena::kNotifyResponse);
+        client.stop();
+
+        if (!haveHead || req.method != "NOTIFY") continue;
+        const sonos::gena::EventService* service = sonos::gena::serviceForCallback(req.path);
+        if (!service) continue;
+        // Nur Events der aktuellen Abos (nach einem Raumwechsel können alte noch eintreffen)
+        const std::string sid = req.header("SID");
+        bool current = false;
+        for (const auto& sub : link.subs) current = current || (sub.service == service && sub.sid == sid);
+        if (!current) continue;
+        onEvent(link, *service, raw.size() > head ? raw.substr(head) : std::string(), millis());
     }
 }
 
@@ -696,6 +886,7 @@ void task(void*) {
             } else if (!connected && wifiUp) {
                 wifiUp = false;
                 link.synced = false;
+                dropSubscriptions(link);
                 post(Event::Type::WifiLost);
                 Serial.println(F("WLAN verloren – verbinde neu"));
             }
@@ -733,7 +924,7 @@ void task(void*) {
 
         // --- Topologie regelmäßig auffrischen (Gruppen/IPs geändert?) -------------
         if (static_cast<int32_t>(now - link.nextTopologyAt) >= 0) {
-            link.nextTopologyAt = now + kTopologyIntervalMs;
+            link.nextTopologyAt = now + (link.eventsActive() ? kTopologyWithEventsMs : kTopologyIntervalMs);
             if (fetchTopology(link.targetIp, link.groups)) link.resolveTarget();
         }
 
@@ -756,6 +947,20 @@ void task(void*) {
         if (xQueueReceive(gFavoriteQueue, &favorite, 0) == pdTRUE) {
             if (link.synced) startFavorite(link, favorite);
             else favoriteFailed(favorite.title, "Speaker noch nicht verbunden");
+        }
+
+        // --- Live-Updates: Events annehmen, Abos pflegen ------------------------------
+        handleNotifications(link);
+        if (link.synced) manageSubscriptions(link, millis());
+        if (static_cast<int32_t>(millis() - link.eventActionAt) >= 0) {
+            if (link.eventPollPending && millis() - link.lastPollAt >= kEventMinPollGapMs) {
+                link.eventPollPending = false;
+                link.nextPollAt = millis();  // Event: gleich abfragen
+            }
+            if (link.topologyPending) {
+                link.topologyPending = false;
+                link.nextTopologyAt = millis();
+            }
         }
 
         // --- Regelmäßig abfragen (Start, Änderungen aus der App, Erholung nach Fehlern) --

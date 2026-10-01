@@ -5,7 +5,7 @@ Das Projekt ist in **vertikale Schritte (Slices)** geschnitten: Jeder Schritt li
 Funktion, die man am Gerät **tatsächlich benutzen** kann – vom Drehring über Logik und Netzwerk
 bis zum Sonos-Speaker und zurück aufs Display. Kein Schritt baut nur eine „Schicht“.
 
-> **Stand:** Schritt 0–7 ✅ abgeschlossen. Als Nächstes: Schritt 8 (Gruppen).
+> **Stand:** Schritt 0–7 ✅ abgeschlossen. Schritt 9 umgesetzt, wartet auf den Geräte-Test; danach Schritt 8.
 > Wie getestet wird, steht ausführlich in [TESTEN.md](TESTEN.md).
 
 ---
@@ -322,7 +322,7 @@ Gruppenlautstärke, im Menü lassen sich einzelne Räume nachjustieren.
 
 ---
 
-### Schritt 9 – Live-Updates, Energiesparen, Feinschliff
+### Schritt 9 – Live-Updates, Energiesparen, Feinschliff 🧪
 
 **Ziel:** Alltagstauglich: schnell, stromsparend, robust.
 

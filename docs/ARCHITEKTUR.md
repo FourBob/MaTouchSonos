@@ -204,6 +204,42 @@ Favorit gewählt (Index + Name):
 - Alle Befehle gehen an den Koordinator des aktiven Raums, der Favorit spielt also in der ganzen Gruppe.
 - Playlists und Alben ersetzen die Warteschlange (wie „Jetzt abspielen“ in der Sonos-App).
 
+## Energiesparen (ab Schritt 9)
+
+`app::IdleController` (app_core, getestet) entscheidet die Helligkeit, `hal::Display::setBacklight()` setzt sie
+per PWM (LEDC, 20 kHz).
+
+| Zustand | wann | Helligkeit |
+|---|---|---|
+| hell | Eingabe in den letzten 30 s | 255 |
+| gedimmt | 30 s ohne Eingabe, oder Musik läuft | 40 |
+| aus | 2 min ohne Eingabe **und** nichts spielt | 0 |
+
+Eine Eingabe bei ausgeschaltetem Display weckt nur. Sie und alles in den folgenden 600 ms wird verworfen,
+damit der Weck-Dreh nicht die Lautstärke ändert. Bei der Taste wird der ganze Druck verworfen (auch ein
+Langdruck). Gedimmt ist das Display noch sichtbar, dort werden Eingaben ausgeführt.
+
+## Live-Updates (ab Schritt 9)
+
+```
+SonosLink-Task                                   Koordinator (Port 1400)
+  SUBSCRIBE /MediaRenderer/AVTransport/Event  ─────▶   (CALLBACK <http://Gerät:3400/ev/av>)
+  SUBSCRIBE …/RenderingControl/Event           ─────▶   bzw. GroupRenderingControl bei Gruppen
+  SUBSCRIBE /ZoneGroupTopology/Event           ─────▶
+          ◀───── NOTIFY /ev/av  (SID, LastChange: TransportState, Metadaten …)
+  WiFiServer :3400 → 200 OK → „bald abfragen“ (150 ms sammeln, höchstens alle 400 ms)
+```
+
+- Ein Event ist nur das Signal, die Werte holt die bewährte Abfrage. So bleibt es einfach und robust,
+  auch wenn ein Event verloren geht.
+- Mit aktiven Abos: Abfrage alle 10 s statt 1,5 s, Topologie alle 2 min statt 30 s.
+- Abos werden nach der Hälfte der Laufzeit (1800 s) erneuert. Schlägt das fehl, wird neu abonniert,
+  sonst nach 60 s erneut versucht. Bei Raumwechsel werden die alten Abos gekündigt, bei WLAN-Verlust
+  verworfen und danach neu angelegt.
+- Events von alten Abos (falsche SID) werden ignoriert.
+- Auswertung (`sonos::gena`, getestet): Kopf der NOTIFY-Anfrage, `LastChange` (kodiertes XML, darin
+  Metadaten nochmals kodiert), Lautstärke nur Kanal `Master`.
+
 ## Designentscheidungen
 
 | Entscheidung | Begründung |
@@ -223,6 +259,7 @@ Favorit gewählt (Index + Name):
 |---|---|---|
 | RenderingControl | `/MediaRenderer/RenderingControl/Control` | Lautstärke eines Speakers |
 | GroupRenderingControl | `/MediaRenderer/GroupRenderingControl/Control` | Gruppenlautstärke |
+| Events (GENA) | `…/Event` der Dienste, Rückruf an Port 3400 | Live-Updates (Schritt 9) |
 | AVTransport | `/MediaRenderer/AVTransport/Control` | Play, Pause, Next, Seek, Now Playing, Favorit abspielen |
 | ZoneGroupTopology | `/ZoneGroupTopology/Control` | Räume, Gruppen, Koordinator |
 | ContentDirectory | `/MediaServer/ContentDirectory/Control` | Favoriten (`FV:2`) |

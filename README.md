@@ -42,7 +42,7 @@ Außen läuft der Fortschrittsbogen.
 | 6 | Albumcover (je nach Dienst: Speaker-Proxy, HTTPS, JPEG/PNG) | ✅ getestet |
 | 7 | Sonos-Favoriten und Radio starten (inkl. Pocket-Casts-Ordner) | ✅ getestet |
 | 8 | Gruppen verwalten, Gruppenlautstärke | ⏳ |
-| 9 | Live-Updates, Energiesparen, Feinschliff | ⏳ |
+| 9 | Live-Updates, Energiesparen, Feinschliff | 🧪 wartet auf Geräte-Test |
 
 Details zu jedem Schritt mit Akzeptanzkriterien und Tests stehen in [docs/ENTWICKLUNGSPLAN.md](docs/ENTWICKLUNGSPLAN.md).
 

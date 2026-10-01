@@ -392,3 +392,33 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 ```
 - [ ] „In Progress“ erscheint im Favoritenmenü (Unten: „Aus Pocket Casts“) und startet die Folgen
 - [ ] Log: `FAVORIT „In Progress“: 23 Einträge über x-rincon-cpcontainer:…&sn=1`
+
+## Checkliste Schritt 9 – Energiesparen, Live-Updates, Dauertest
+
+**Energiesparen**
+- [ ] 30 s nichts tun → Display wird **gedimmt** (Log `DISPLAY gedimmt`), Bild bleibt erkennbar
+- [ ] Musik pausiert, 2 min nichts tun → Display **aus** (`DISPLAY aus`)
+- [ ] Während Musik läuft, geht es **nicht** aus (bleibt gedimmt)
+- [ ] Display aus → Ring drehen: Display geht an, **Lautstärke ändert sich nicht** (`ENC … weckt nur`)
+- [ ] Display aus → Taste drücken: Display geht an, **kein** Play/Pause (`BTN weckt nur`)
+- [ ] Display aus → Wischen/Tippen: Display geht an, **kein** Titelwechsel (`SWIPE weckt nur`)
+- [ ] Display gedimmt → Ring drehen: wird hell **und** die Lautstärke ändert sich (gedimmt ist noch sichtbar)
+- [ ] Display aus, in der Sonos-App Musik starten → Display geht gedimmt an
+- [ ] Dimmen wirkt stufenlos (PWM). Falls die Beleuchtung beim Dimmen flackert oder pfeift: melden
+
+**Live-Updates**
+- [ ] Log nach dem Start: `EVENTS: Empfang auf Port 3400`, dann `EVENTS AVTransport abonniert`,
+      `… RenderingControl` (bzw. `GroupRenderingControl` bei Gruppen) und `… ZoneGroupTopology abonniert`
+- [ ] In der Sonos-App Lautstärke ändern → am Gerät **< 1 s** (Log `EVENT Lautstärke …`)
+- [ ] In der App Play/Pause/Titel wechseln → am Gerät **< 1 s** (`EVENT Wiedergabe: PLAYING` usw.)
+- [ ] In der App Räume gruppieren → Raumliste am Gerät nach ~1 s aktuell (`EVENT Topologie geändert`)
+- [ ] Raum am Gerät wechseln → neue `… abonniert`-Zeilen für den neuen Raum
+- [ ] Fehlen die `abonniert`-Zeilen oder kommen keine `EVENT`-Zeilen: Log schicken – dann fragt das Gerät
+      wie bisher alle 1,5 s ab, funktioniert also trotzdem, nur langsamer
+
+**Robustheit / Dauertest**
+- [ ] Router neu starten → Gerät verbindet sich neu, Abos werden neu angelegt, alles läuft ohne Eingriff
+- [ ] Speaker vom Strom trennen und wieder anschließen → Gerät findet ihn wieder
+- [ ] **24 h laufen lassen**: danach reagiert es sofort; `heap_min` im STATUS sinkt nicht stetig;
+      nach einem Neustart steht im Log `Letzter Neustart: …` (bei Absturz: `ABSTURZ`, bei Watchdog: `WATCHDOG`)
+

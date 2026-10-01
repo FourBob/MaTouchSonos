@@ -14,6 +14,8 @@
 #include "fixtures_nowplaying.h"
 #include "fixtures_topology.h"
 #include "fixtures_favorites.h"
+#include "fixtures_gena.h"
+#include "Gena.h"
 #include "Favorites.h"
 #include "Topology.h"
 #include "AlbumArt.h"
@@ -499,6 +501,69 @@ void test_avtransport_queue_requests() {
                              avtransport::queueUri("RINCON_000E58A0123401400").c_str());
 }
 
+// --- GENA-Events (Schritt 9) -----------------------------------------------------
+
+void test_gena_timeout() {
+    TEST_ASSERT_EQUAL_INT(1800, gena::parseTimeout("Second-1800"));
+    TEST_ASSERT_EQUAL_INT(3600, gena::parseTimeout(" second-3600 "));
+    TEST_ASSERT_EQUAL_INT(0, gena::parseTimeout("infinite"));
+    TEST_ASSERT_EQUAL_INT(-1, gena::parseTimeout("Second-"));
+    TEST_ASSERT_EQUAL_INT(-1, gena::parseTimeout("1800"));
+    TEST_ASSERT_EQUAL_INT(-1, gena::parseTimeout(""));
+}
+
+void test_gena_notify_head_and_transport_state() {
+    const std::string raw = fixtures::kNotifyAvTransport;
+    gena::Request req;
+    size_t head = 0;
+    TEST_ASSERT_TRUE(gena::parseRequestHead(raw, req, head));
+    TEST_ASSERT_EQUAL_STRING("NOTIFY", req.method.c_str());
+    TEST_ASSERT_EQUAL_STRING("/ev/av", req.path.c_str());
+    TEST_ASSERT_EQUAL_STRING("uuid:RINCON_000E58A0123401400_sub0000000123", req.header("sid").c_str());
+    TEST_ASSERT_EQUAL_STRING("0", req.header("SEQ").c_str());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(raw.size() - head), req.contentLength);
+    TEST_ASSERT_TRUE(gena::serviceForCallback(req.path) == &gena::AVTransport);
+
+    const std::string change = gena::lastChange(raw.substr(head));
+    std::string state;
+    TEST_ASSERT_TRUE(gena::eventValue(change, "TransportState", state));
+    TEST_ASSERT_EQUAL_STRING("PLAYING", state.c_str());
+    std::string meta;  // Metadaten im Attribut: nach dem Dekodieren wieder XML
+    TEST_ASSERT_TRUE(gena::eventValue(change, "CurrentTrackMetaData", meta));
+    TEST_ASSERT_NOT_NULL(strstr(meta.c_str(), "<dc:title>Stayin&apos; Alive</dc:title>"));
+}
+
+void test_gena_volume_master_channel() {
+    const std::string raw = fixtures::kNotifyRenderingControl;
+    gena::Request req;
+    size_t head = 0;
+    TEST_ASSERT_TRUE(gena::parseRequestHead(raw, req, head));
+    TEST_ASSERT_TRUE(gena::serviceForCallback(req.path) == &gena::RenderingControl);
+    std::string volume;
+    TEST_ASSERT_TRUE(gena::eventValue(gena::lastChange(raw.substr(head)), "Volume", volume, "Master"));
+    TEST_ASSERT_EQUAL_STRING("27", volume.c_str());  // nicht LF/RF (100)
+}
+
+void test_gena_group_volume_without_lastchange() {
+    const std::string raw = fixtures::kNotifyGroupRenderingControl;
+    gena::Request req;
+    size_t head = 0;
+    TEST_ASSERT_TRUE(gena::parseRequestHead(raw, req, head));
+    TEST_ASSERT_TRUE(gena::serviceForCallback(req.path) == &gena::GroupRenderingControl);
+    TEST_ASSERT_EQUAL_STRING("", gena::lastChange(raw.substr(head)).c_str());
+    TEST_ASSERT_EQUAL_STRING("31", xml::findElement(raw.substr(head), "GroupVolume").c_str());
+}
+
+void test_gena_incomplete_or_invalid_head() {
+    gena::Request req;
+    size_t head = 0;
+    TEST_ASSERT_FALSE(gena::parseRequestHead("NOTIFY /ev/av HTTP/1.1\r\nSID: x\r\n", req, head));  // Leerzeile fehlt
+    TEST_ASSERT_FALSE(gena::parseRequestHead("Unsinn\r\n\r\n", req, head));
+    TEST_ASSERT_TRUE(gena::parseRequestHead("NOTIFY /x HTTP/1.1\r\n\r\n", req, head));
+    TEST_ASSERT_EQUAL_INT(0, req.contentLength);
+    TEST_ASSERT_NULL(gena::serviceForCallback("/x"));
+}
+
 void test_nowplaying_rejects_unexpected_response() {
     PositionInfo pos;
     TEST_ASSERT_FALSE(parsePositionInfo(fixtures::kFault402, pos));
@@ -800,6 +865,11 @@ int main(int, char**) {
     RUN_TEST(test_nowplaying_rejects_unexpected_response);
     RUN_TEST(test_art_candidates_same_image_only_once);
     RUN_TEST(test_art_split_url);
+    RUN_TEST(test_gena_timeout);
+    RUN_TEST(test_gena_notify_head_and_transport_state);
+    RUN_TEST(test_gena_volume_master_channel);
+    RUN_TEST(test_gena_group_volume_without_lastchange);
+    RUN_TEST(test_gena_incomplete_or_invalid_head);
     RUN_TEST(test_favorites_browse_request);
     RUN_TEST(test_favorites_parse_all_kinds);
     RUN_TEST(test_favorites_visitor_positions);

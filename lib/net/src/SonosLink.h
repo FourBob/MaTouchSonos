@@ -91,6 +91,9 @@ struct FavoritesInfo {
  * Ablauf der Task: WLAN verbinden → Anlage suchen (bekannte IPs, sonst SSDP) →
  * Topologie lesen → Raum auflösen (Befehle immer an den Gruppen-Koordinator) →
  * alle 1,5 s Zustand/Titel/Lautstärke abfragen, alle 30 s die Topologie.
+ * Live-Updates (ab Schritt 9): Die Task abonniert am Koordinator die UPnP-Events (Wiedergabe,
+ * Lautstärke, Topologie) und nimmt sie auf Port 3400 an. Ein Event löst sofort eine Abfrage aus;
+ * solange alle Abos stehen, wird nur noch alle 10 s (Topologie alle 2 min) zur Sicherheit gefragt.
  * Die Favoriten werden nach dem Verbinden gelesen und auf Wunsch (refreshFavorites) erneuert.
  * Einzelne Aussetzer werden still wiederholt; nach mehreren Fehlschlägen in Folge
  * wird die Anlage neu gesucht (z. B. wenn ein Speaker eine neue IP bekommen hat).
