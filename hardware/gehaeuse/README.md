@@ -15,11 +15,13 @@ Parametrischer 3D-Druck-Sockel (OpenSCAD) für die MaTouchSonos-Fernbedienung.
 um 35° gegen die Senkrechte geneigt, damit sie vom Sofa aus gut lesbar ist. Das USB-C-Kabel kommt
 von hinten durch einen Tunnel genau in Achsrichtung zur Buchse.
 
-**Befestigung:** Drei längere M2-Schrauben ersetzen die drei Original-Schrauben der Platine. Sie gehen
-von hinten bzw. unten durch Kanäle im Sockel und durch Säulen, deren Oberkante die Platine gegen die
-Original-Dome drückt. Die Säulen bestimmen die Einstecktiefe, der Becherrand schwebt ~1 mm über dem
-Boden. So bleibt die Platine immer fest eingespannt. Drehen am Ring und Kabelzug belasten die
-USB-C-Buchse nicht, und Reibung ist nicht nötig: Die Quetschrippen zentrieren nur.
+**Befestigung:** Das Gerätegehäuse hat drei eigene Schraubdome. Sie liegen in den Aussparungen am Rand
+der Platine und sind leer. Drei M2-Schrauben gehen von hinten bzw. unten durch Kanäle im Sockel und durch
+Säulen, die auf diesen Domen aufliegen, und greifen in die Dome. Die Platine bleibt mit ihren
+Original-Schrauben, wie sie ist. Bezugsfläche ist das Gehäuse, nicht die Platine (die sitzt nicht
+unbedingt gerade). Die Säulen bestimmen die Einstecktiefe, der Becherrand schwebt ~1 mm über dem Boden.
+Drehen am Ring und Kabelzug belasten die USB-C-Buchse nicht, und Reibung ist nicht nötig: Die
+Quetschrippen zentrieren nur.
 
 ## Dateien
 
@@ -29,6 +31,7 @@ USB-C-Buchse nicht, und Reibung ist nicht nötig: Die Quetschrippen zentrieren n
 | `stl/sockel.stl` | Sockel, 92 × 92 × 64 mm |
 | `stl/deckel.stl` | Deckel für die Gewichtstasche im Boden |
 | `stl/passtest.stl` | Nur die Aufnahme als 10 mm hoher Ring: **zuerst drucken**, um die Passung zu prüfen (~10 min) |
+| `stl/schablone.stl` | Kappe mit den drei Dom-Löchern: prüft die Lage der Dome (~5 min), siehe unten |
 | `stl/*` | Mit den Standardwerten erzeugt. Nach dem Messen ggf. neu erzeugen (siehe unten). |
 | `bilder/` | Ansichten (werden aus dem Modell erzeugt) |
 
@@ -50,18 +53,27 @@ ohne Stützen, innen darf es etwas rau sein.
 
 | Teil | Menge | Hinweis |
 |---|---|---|
-| Schraube M2 × 16, Linsen-/Flachkopf (Kopf-Ø ≤ 4,2 mm) | 3 | **Gleiche Gewindeart wie die Originalschrauben**: meist selbstschneidend für Kunststoff („PT“/„Kunststoffschraube“). Länge prüfen, siehe unten. |
+| Schraube M2 × 16, Linsen-/Flachkopf (Kopf-Ø ≤ 4,2 mm) | 3 | Selbstschneidend für Kunststoff („PT“/„Kunststoffschraube“), passend zum Loch in den Domen (siehe unten). |
 | Schraubendreher PH0/PH1 mit langem, schlankem Schaft (≥ 80 mm, Ø ≤ 4 mm) | 1 | Die Kanäle sind bis zu ~70 mm lang |
 | Silikonfüße Ø 10 mm (z. B. 3M Bumpon) | 4 | |
 | Unterlegscheiben M20 (Ø 37 × 3 mm) | 2 | optional, Beschwerung |
 | USB-C-Kabel mit **geradem** Stecker | 1 | Steckergehäuse ≤ 13 mm breit |
 
-**Vor dem Drucken zwei Werte messen** (eine der drei Platinen-Schrauben herausdrehen):
-- **`pcb_tiefe`:** Abstand vom Becherrand bis zur Platinenoberfläche (Standard 3,0 mm). Die Säulen
-  müssen die Platine berühren. Wenn du unsicher bist, lieber 0,2 mm mehr eintragen.
-- **Originalschraube:** Länge des Gewindes. `einschraub` = Länge − Platinenstärke (1,6 mm).
-  Beim Standard (`einschraub` = 4) passt M2 × 16. Das Modell rechnet mit `schraube_l` und bricht ab,
-  wenn der Schraubenkopf nicht im vollen Material läge.
+**Vor dem Drucken messen** (Rückseite offen, Schieblehre):
+- **`dom_tiefe`:** Abstand vom Becherrand bis zur Oberkante der drei leeren Gehäuse-Dome (in den
+  Aussparungen der Platine; Standard 5,0 mm). Mit dem Tiefenmaß der Schieblehre an allen drei Domen
+  messen. Die Säulen müssen aufliegen; wenn du unsicher bist, lieber 0,2 mm mehr eintragen.
+- **`becher_innen_d`:** Innendurchmesser des Bechers am Rand (Standard 46 mm). Die Säulen werden zur Wand
+  hin abgeflacht, damit sie nicht anstoßen.
+- **Loch in den Domen:** Durchmesser und Tiefe. Bei ~1,6–1,8 mm passt eine selbstschneidende M2-Schraube.
+  `einschraub` (Standard 4) = so tief soll die Schraube in den Dom greifen, höchstens die Lochtiefe.
+  Das Modell rechnet mit `schraube_l` und bricht ab, wenn der Schraubenkopf nicht im vollen Material läge.
+
+**Lage der Dome prüfen:** Die Lage (`dome`) ist aus dem Foto der Rückseite ausgemessen, also nur auf etwa
+±1 mm genau. Deshalb zuerst `schablone.stl` drucken (~5 min), mit dem Kragen über das hintere Ende des
+Körpers schieben, den Ausschnitt über die USB-C-Buchse. Eine M2-Schraube muss durch jedes der drei
+Löcher senkrecht in den Dom fallen. Wenn ein Loch daneben liegt: Richtung und ungefähren Versatz notieren
+und `dome` anpassen (Radius in mm, Winkel in Grad, Blick von vorn, Buchse bei 90°).
 
 ## Zusammenbau
 
@@ -75,14 +87,12 @@ ohne Stützen, innen darf es etwas rau sein.
    weg von der WLAN-Antenne. Den RSSI-Wert im Log (`WLAN verbunden, … RSSI`) trotzdem einmal mit und
    ohne Gewicht vergleichen.
 3. **Füße:** 4 selbstklebende Silikonfüße (Ø 10 mm, z. B. 3M Bumpon) in die Mulden kleben.
-4. **Platinen-Schrauben lösen:** Die drei Original-Schrauben aus der Platine drehen. Die Platine bleibt
-   durch die Steckverbinder in Position, aber nicht am Kabel ziehen.
-5. **Gerät einsetzen:** so drehen, dass die USB-C-Buchse zum Kabeltunnel zeigt („oben“ am Display).
-   Dann passen die drei Säulen genau unter die Platinenlöcher. Einschieben, bis die Platine auf den
-   Säulen aufliegt.
-6. **Verschrauben:** Die drei M2-Schrauben durch die Kanäle einsetzen, zwei hinten und einer von unten,
+4. **Gerät einsetzen:** so drehen, dass die USB-C-Buchse zum Kabeltunnel zeigt („oben“ am Display).
+   Dann passen die drei Säulen genau durch die Aussparungen der Platine auf die Gehäuse-Dome. Einschieben,
+   bis die Dome auf den Säulen aufliegen. Die Platinen-Schrauben bleiben drin.
+5. **Verschrauben:** Die drei M2-Schrauben durch die Kanäle einsetzen, zwei hinten und einer von unten,
    und handfest anziehen. Nicht überdrehen, die Dome sind aus Kunststoff.
-7. **Kabel:** Den USB-C-Stecker gerade von hinten durch den Tunnel schieben und einstecken.
+6. **Kabel:** Den USB-C-Stecker gerade von hinten durch den Tunnel schieben und einstecken.
 
 ## Wichtige Parameter
 
@@ -93,9 +103,10 @@ ohne Stützen, innen darf es etwas rau sein.
 | `schwebe` | 16 | Abstand der untersten Kopfkante zum Tisch |
 | `spiel`, `rippe` | 0.35, 0.5 | Passung der Aufnahme (siehe Passtest) |
 | `usb_abstand` | 17.9 | Lage der USB-C-Buchse neben der Körpermitte (aus der Platinendatei von Makerfabs) |
-| `pcb_tiefe` | 3.0 | Becherrand → Platinenoberfläche. **Messen!** |
-| `schraube_l`, `einschraub` | 16, 4 | Schraubenlänge und Gewindelänge im Original-Dom |
-| `loecher` | – | Lage der drei Platinenlöcher (aus der Eagle-Datei, auf die Vorderansicht gespiegelt) |
+| `dom_tiefe` | 5.0 | Becherrand → Oberkante der Gehäuse-Dome. **Messen!** |
+| `becher_innen_d` | 46 | Innen-Ø des Bechers am Rand. **Messen!** |
+| `schraube_l`, `einschraub` | 16, 4 | Schraubenlänge und wie tief sie in den Dom greift |
+| `dome` | – | Lage der drei Gehäuse-Dome (aus dem Foto, mit `schablone.stl` prüfen) |
 | `fuss_d` | 92 | Durchmesser der Standfläche |
 
 Die Standfläche rückt automatisch so weit nach hinten, dass ein Druck auf die Displaymitte den Sockel
@@ -107,11 +118,14 @@ STL neu erzeugen:
 openscad -o stl/sockel.stl   -D 'teil="sockel"'   sockel.scad
 openscad -o stl/deckel.stl   -D 'teil="deckel"'   sockel.scad
 openscad -o stl/passtest.stl -D 'teil="passtest"' sockel.scad
+openscad -o stl/schablone.stl -D 'teil="schablone"' sockel.scad
 ```
 
 ## Maßgrundlage
 
 - Makerfabs-Zeichnung: Kopf Ø 79 ± 0,3 × 11,3, Körper Ø 50 ± 0,3 × 26, Drückweg 2
 - Platinendatei (Eagle, [Makerfabs GitHub](https://github.com/Makerfabs/MaTouch-ESP32-S3-Rotary-IPS-Display-with-Touch-2.1-ST7701)):
-  Platine Ø 43,5, USB-C senkrecht bestückt, 17,9 mm neben der Mitte; drei Befestigungslöcher M2
-- Fotos vom Gerät: Rückseite offen (Platine im Becher, 3 Schrauben), USB-C zeigt axial nach hinten
+  Platine Ø 43,5, USB-C senkrecht bestückt, 17,9 mm neben der Mitte
+- Fotos vom Gerät: Rückseite offen (Platine im Becher mit 3 Schrauben, daneben in Aussparungen der
+  Platine 3 leere Gehäuse-Dome), USB-C zeigt axial nach hinten. Die Lage der Dome ist aus diesem Foto
+  ausgemessen; Kontrolle: Die Platinenlöcher aus demselben Foto treffen die Eagle-Koordinaten auf ~1 mm.

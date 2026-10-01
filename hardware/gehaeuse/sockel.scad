@@ -4,11 +4,12 @@
 // (Ø 79) schwebt frei darüber: nichts berührt den Ring, der Drückweg (2 mm) bleibt frei.
 // Das USB-C-Kabel kommt von hinten durch einen Tunnel genau in Achsrichtung zur Buchse.
 //
-// Befestigung: Drei längere M2-Schrauben ersetzen die Original-Schrauben der Platine. Sie gehen
-// von hinten durch Kanäle im Sockel und durch Säulen, deren Oberkante die Platine gegen die
-// Original-Dome drückt. Die Säulen bestimmen die Einstecktiefe (der Becherrand schwebt ~1 mm über
-// dem Boden) – so bleibt die Platine immer fest eingespannt, und weder Drehen am Ring noch
-// Kabelzug belasten die USB-C-Buchse.
+// Befestigung: Das Gerätegehäuse hat drei eigene Schraubdome, die in Aussparungen der Platine
+// liegen (die Platine selbst bleibt mit ihren Original-Schrauben, wie sie ist). Drei M2-Schrauben
+// gehen von hinten durch Kanäle im Sockel und durch Säulen, die auf den Domen aufliegen. Die Säulen
+// bestimmen die Einstecktiefe (der Becherrand schwebt ~1 mm über dem Boden). Das Gehäuse ist die
+// feste Bezugsfläche – unabhängig davon, wie gerade die Platine sitzt –, und weder Drehen am Ring
+// noch Kabelzug belasten die USB-C-Buchse.
 //
 // Maße des Geräts: Makerfabs-Zeichnung (Kopf Ø 79 × 11,3, Körper Ø 50 × 26, Drückweg 2) und
 // Platinendatei (USB-C-Buchse 17,9 mm neben der Körpermitte). Alles in mm.
@@ -17,9 +18,10 @@
 //   "sockel"      – der Sockel (Standfläche nach unten drucken, ohne Stützen)
 //   "deckel"      – Deckel für die Gewichtstasche im Boden
 //   "passtest"    – nur die Aufnahme als kurzer Ring: Passung in ~10 min prüfen
+//   "schablone"   – Kappe für die Gehäuserückseite mit den drei Dom-Löchern: Lage prüfen (~5 min)
 //   "ansicht"     – Sockel mit Gerät (nur zum Anschauen, nicht drucken)
 
-teil = "ansicht"; // [sockel, deckel, passtest, ansicht]
+teil = "ansicht"; // [sockel, deckel, passtest, schablone, ansicht]
 
 /* [Gerät] */
 kopf_d = 79;          // Ø Kopf (Display + Drehring)
@@ -29,18 +31,17 @@ koerper_h = 26;       // Körper, von der Rückseite des Kopfes bis hinten
 drueckweg = 2;        // Kopf bewegt sich beim Drücken so weit auf den Körper zu
 usb_abstand = 17.9;   // USB-C-Buchse: Abstand zur Körpermitte
 
-/* [Befestigung (Platinen-Schrauben)] */
-pcb_tiefe = 3.0;      // Becherrand → Oberfläche der Platine (Bauteilseite). BITTE MESSEN
-pcb_dicke = 1.6;      // Platinenstärke
-schraube_l = 16;      // Länge der neuen M2-Schrauben (Gewinde, ohne Kopf)
-einschraub = 4;       // so tief greift die Schraube in den Original-Dom (≈ Originalschraube − pcb_dicke)
-saeule_d = 4.6;       // Säule unter der Platine (Lochrand der Platine ist frei von Bauteilen)
+/* [Befestigung (Gehäuse-Dome)] */
+dom_tiefe = 5.0;      // Becherrand → Oberkante der drei Gehäuse-Dome. BITTE MESSEN
+becher_innen_d = 46;  // Innen-Ø des Bechers am Rand (die Dome sitzen an der Wand). BITTE MESSEN
+schraube_l = 16;      // Länge der M2-Schrauben (Gewinde, ohne Kopf)
+einschraub = 4;       // so tief greift die Schraube in den Dom
+saeule_d = 4.0;       // Säule auf dem Dom (muss durch die Aussparung der Platine passen)
 schraube_loch = 2.4;  // Durchgang für M2
 kopf_kanal = 4.8;     // Kanal für Schraubenkopf (Ø ≤ 4,2) und Schraubendreher
-// Löcher der Platine in Gerätekoordinaten (Blick von vorn, USB-C-Buchse bei 90° = „oben“).
-// Aus der Eagle-Datei: Radius zur Platinenmitte und Winkel, von der Bauteilseite (hinten) auf die
-// Vorderansicht gespiegelt und so gedreht, dass die Buchse oben liegt.
-loecher = [[19.7, -98.7], [18.2, 2.6], [16.8, 140.6]];
+// Lage der Dome in Gerätekoordinaten [Radius, Winkel] (Blick von vorn, USB-C-Buchse bei 90° = „oben“).
+// Aus dem Foto der Rückseite ausgemessen (±1 mm) – mit der Schablone prüfen, siehe README.
+dome = [[22.5, -50], [21.5, 67], [20.5, -168]];
 
 /* [Aufstellung] */
 neigung = 35;         // Displayfläche gegen die Senkrechte: 0 = senkrecht, 90 = liegend
@@ -84,8 +85,8 @@ bohrung_d = koerper_d + 2 * spiel;
 aufnahme_d = bohrung_d + 2 * wand;
 z_hinten = -(kopf_h + koerper_h);           // Rückseite des Körpers
 z_mund = z_hinten + griff;                  // Oberkante des Sockels
-z_pcb = z_hinten + pcb_tiefe;               // Oberfläche der Platine = Oberkante der Säulen
-z_kopf = z_pcb - (schraube_l - pcb_dicke - einschraub);   // Auflage des Schraubenkopfs
+z_dom = z_hinten + dom_tiefe;               // Oberkante der Dome = Oberkante der Säulen
+z_kopf = z_dom - (schraube_l - einschraub);  // Auflage des Schraubenkopfs
 assert(griff <= koerper_h - drueckweg - 1, "griff zu groß: Sockel würde den Drückweg blockieren");
 assert(z_kopf <= z_hinten - boden - 1.2, "schraube_l zu kurz: Kopf läge nicht im vollen Material");
 
@@ -152,13 +153,20 @@ module fuesse() {
 }
 
 module saeulen() {
-    im_geraet() for (l = loecher) rotate([0, 0, l[1]]) translate([l[0], 0, z_hinten - boden - 0.01])
-        cylinder(d = saeule_d, h = z_pcb - (z_hinten - boden) + 0.01);
+    // Im Becher an der Innenwand abgeflacht (die Dome sitzen dicht an der Wand)
+    im_geraet() intersection() {
+        for (l = dome) rotate([0, 0, l[1]]) translate([l[0], 0, z_hinten - boden - 0.01])
+            cylinder(d = saeule_d, h = z_dom - (z_hinten - boden) + 0.01);
+        union() {
+            translate([0, 0, z_hinten - boden - 1]) cylinder(d = bohrung_d, h = boden + 1);
+            translate([0, 0, z_hinten - 0.01]) cylinder(d = becher_innen_d - 0.6, h = dom_tiefe + 1);
+        }
+    }
 }
 
 module schraubenkanaele() {
-    im_geraet() for (l = loecher) rotate([0, 0, l[1]]) translate([l[0], 0, 0]) {
-        translate([0, 0, z_kopf - 0.01]) cylinder(d = schraube_loch, h = z_pcb - z_kopf + 1);
+    im_geraet() for (l = dome) rotate([0, 0, l[1]]) translate([l[0], 0, 0]) {
+        translate([0, 0, z_kopf - 0.01]) cylinder(d = schraube_loch, h = z_dom - z_kopf + 1);
         translate([0, 0, z_kopf - 150]) cylinder(d = kopf_kanal, h = 150);
     }
 }
@@ -196,6 +204,21 @@ module passtest() {
     }
 }
 
+module schablone() {
+    // Kappe, die über das hintere Ende des Körpers geschoben wird (Kragen zentriert sie). Durch die
+    // drei Löcher muss eine M2-Schraube senkrecht in die Dome fallen. Der Schlitz zeigt zur USB-C-Buchse.
+    // In Gerätekoordinaten modelliert (Rückseite bei z_hinten), dadurch seitenrichtig.
+    kragen = 4;
+    difference() {
+        translate([0, 0, z_hinten - 1.2]) cylinder(d = bohrung_d + 2 * 1.6, h = 1.2 + kragen);
+        translate([0, 0, z_hinten]) cylinder(d = bohrung_d, h = kragen + 1);
+        for (l = dome) rotate([0, 0, l[1]]) translate([l[0], 0, z_hinten - 2]) cylinder(d = schraube_loch, h = 4);
+        translate([-6.5, usb_abstand - 4, z_hinten - 2]) cube([13, 8, 4]);   // USB-C (Ausrichtung)
+        // Markierung „vorn unten“ (gegenüber der Buchse): Kerbe im Kragen
+        translate([-1, -bohrung_d / 2 - 3, z_hinten]) cube([2, 4, kragen + 1]);
+    }
+}
+
 // Gerät als Attrappe (für die Ansicht)
 module geraet() {
     im_geraet() {
@@ -211,9 +234,13 @@ else if (teil == "passtest") {
     // zum Drucken flach hinlegen: Mündung nach oben
     translate([0, 0, -(z_mund - griff)]) rotate([-kipp, 0, 0]) translate([0, 0, -hz]) passtest();
 }
+else if (teil == "schablone") {
+    // zum Drucken: Boden nach unten (Rückseite des Geräts zeigt dann nach oben – Kragen oben)
+    translate([0, 0, -(z_hinten - 1.2)]) schablone();
+}
 else if (teil == "ansicht") {
     color("gainsboro") sockel();
     geraet();
     echo(str("Displaymitte ", hz, " mm über dem Tisch, Fuß ", fuss_y, " mm nach hinten versetzt"));
-    echo(str("Schrauben: 3 × M2 × ", schraube_l, ", Kopf liegt ", z_hinten - boden - z_kopf, " mm unter dem Boden"));
+    echo(str("Schrauben: 3 × M2 × ", schraube_l, " in die Gehäuse-Dome, Kopf liegt ", z_hinten - boden - z_kopf, " mm unter dem Boden"));
 }
