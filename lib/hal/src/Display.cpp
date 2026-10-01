@@ -24,7 +24,7 @@ Arduino_ESP32RGBPanel* rgbPanel = new Arduino_ESP32RGBPanel(
     LCD_VSYNC_POLARITY, LCD_VSYNC_FRONT_PORCH, LCD_VSYNC_PULSE_WIDTH, LCD_VSYNC_BACK_PORCH);
 
 // Init-Sequenz "type5" ist die, die Makerfabs für dieses 2.1"-Panel verwendet.
-Arduino_RGB_Display* gfx = new Arduino_RGB_Display(
+Arduino_RGB_Display* panel = new Arduino_RGB_Display(
     LCD_WIDTH, LCD_HEIGHT, rgbPanel, 0 /* rotation */, true /* auto_flush */,
     spiBus, GFX_NOT_DEFINED /* RST */, st7701_type5_init_operations, sizeof(st7701_type5_init_operations));
 
@@ -47,7 +47,7 @@ lv_indev_drv_t touchDrv;
 void flushCb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* colors) {
     const int16_t w = static_cast<int16_t>(area->x2 - area->x1 + 1);
     const int16_t h = static_cast<int16_t>(area->y2 - area->y1 + 1);
-    gfx->draw16bitRGBBitmap(area->x1, area->y1, reinterpret_cast<uint16_t*>(&colors->full), w, h);
+    panel->draw16bitRGBBitmap(area->x1, area->y1, reinterpret_cast<uint16_t*>(&colors->full), w, h);
     lv_disp_flush_ready(drv);
 }
 
@@ -73,11 +73,11 @@ lv_color_t* allocBuffer() {
 }  // namespace
 
 bool Display::begin() {
-    if (!gfx->begin()) {
-        log_e("Display: gfx->begin() fehlgeschlagen");
+    if (!panel->begin()) {
+        log_e("Display: panel->begin() fehlgeschlagen");
         return false;
     }
-    gfx->fillScreen(BLACK);
+    panel->fillScreen(BLACK);
 
     ledcSetup(kBacklightChannel, kBacklightFreq, kBacklightBits);
     ledcAttachPin(LCD_BACKLIGHT, kBacklightChannel);
@@ -114,7 +114,7 @@ bool Display::begin() {
 
 void Display::setBacklight(uint8_t level) { ledcWrite(kBacklightChannel, level); }
 
-Arduino_GFX* Display::gfx() { return hal::gfx; }
+Arduino_GFX* Display::gfx() { return panel; }
 
 bool Display::takeTouchActivity() {
     const bool seen = touchSeen;
