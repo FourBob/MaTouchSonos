@@ -56,6 +56,7 @@ namespace {
 
 constexpr uint32_t kMessageMs = 4000;      // Fehlermeldungen (z. B. „Nichts zum Abspielen“)
 constexpr uint32_t kHintMs = 1500;         // kurze Hinweise (z. B. „Nächster Titel“)
+constexpr bool kEncoderDiagnostics = true; // vorübergehend: jede Encoder-Bewegung loggen (ENC-DIAG)
 
 app::ButtonDetector button;
 app::VolumeController volume;
@@ -458,8 +459,16 @@ void loop() {
     const uint32_t now = millis();
 
     // Drehring – Bedeutung je nach Modus (Lautstärke, Menüauswahl, Zielposition)
-    rawSinceLastDetent += hal::Input::takeRawSteps();
+    const int32_t raw = hal::Input::takeRawSteps();
+    rawSinceLastDetent += raw;
     const int32_t d = hal::Input::takeDetents();
+    if (kEncoderDiagnostics && raw != 0) {
+        // Diagnose (Fehlersuche „erstes Menü reagiert nicht aufs Drehen“): Rohschritte, Kontakte, Rastungen
+        bool a, b;
+        hal::Input::encoderLevels(a, b);
+        Serial.printf("ENC-DIAG roh %+ld A=%d B=%d -> Rastungen %+ld, Modus %d\n", static_cast<long>(raw), a, b,
+                      static_cast<long>(d), static_cast<int>(modes.mode()));
+    }
     if (d != 0 && !idle.onInput(now)) {
         Serial.printf("ENC %+ld weckt nur\n", static_cast<long>(d));  // Weck-Dreh ändert nichts
         rawSinceLastDetent = 0;

@@ -112,6 +112,11 @@ int32_t Input::takeRawSteps() {
     return ENCODER_INVERT ? -s : s;
 }
 
+void Input::encoderLevels(bool& a, bool& b) {
+    a = gpio_get_level(static_cast<gpio_num_t>(ENCODER_PIN_A));
+    b = gpio_get_level(static_cast<gpio_num_t>(ENCODER_PIN_B));
+}
+
 bool Input::buttonRaw() {
     return digitalRead(BUTTON_PIN) == LOW;
 }

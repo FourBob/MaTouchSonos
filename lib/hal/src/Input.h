@@ -25,6 +25,9 @@ public:
     /** Rohschritte seit dem letzten Aufruf – nur zur Diagnose (z. B. Schritte pro Rastung). */
     static int32_t takeRawSteps();
 
+    /** Pegel der beiden Encoder-Kontakte (true = offen/High; Ruhelage ist A = B = true). Zur Diagnose. */
+    static void encoderLevels(bool& a, bool& b);
+
     /** Aktueller, nicht entprellter Pegel der Taste (true = gedrückt). */
     static bool buttonRaw();
 };
