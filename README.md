@@ -21,7 +21,7 @@ Die Bedienung ist auf die runde Form und den Drehring ausgelegt:
 |---|---|
 | **Ring drehen** | Lautstärke (Bogen am Rand zeigt den Wert) |
 | **Kurz drücken** | Play / Pause |
-| **Lang drücken** | Ringmenü: **Spulen**, **Räume**, **Favoriten**, **Spiel** (Ringbrecher, Boxenstopp), **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
+| **Lang drücken** | Ringmenü: **Spulen**, **Räume**, **Favoriten**, **Spiel** (Ringbrecher, Boxenstopp, Asteroiden, Röhrensturm), **Schließen**. Der Ring blättert, Drücken wählt, Langdruck schließt. |
 | **Räume** | Drehrad mit allen Räumen und Gruppen („Küche + 2“). Drücken schaltet um, der Raum wird für den nächsten Start gemerkt. |
 | **Nach rechts / links wischen** | Nächster / vorheriger Titel |
 | **Spulen** | Der Ring verschiebt die Zielposition auf dem Fortschrittsring (1 % pro Klick, mindestens 5 s), Drücken springt dorthin, Langdruck bricht ab |

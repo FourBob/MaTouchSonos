@@ -43,6 +43,10 @@
 #include "RaceScreen.h"
 #include "Highscores.h"
 #include "ScoreScreen.h"
+#include "AsteroidsGame.h"
+#include "AsteroidsScreen.h"
+#include "TubeGame.h"
+#include "TubeScreen.h"
 #include "ProgressTracker.h"
 #include "RingBreakout.h"
 #include "SonosLink.h"
@@ -116,14 +120,29 @@ uint32_t boardValue = 0;          // erreichte Punkte bzw. Zeit
 int boardRank = -1;               // Platz in der Liste (−1 = nicht drin)
 app::game::HighscoreTable ringTable(false);
 app::game::HighscoreTable raceTable(true);
+app::game::HighscoreTable astTable(false);
+app::game::HighscoreTable tubeTable(false);
 app::game::InitialsEntry initials;
 char lastInitials[4] = "AAA";
 ScoreScreen scoreScreen;
 
-enum class ActiveGame : uint8_t { Breakout, Race };
-constexpr int kGameCount = 2;
-const char* const kGameNames[kGameCount] = {"Ringbrecher", "Boxenstopp"};
-const char* const kGameDetails[kGameCount] = {"Ring dreht den Schläger", "Ring lenkt, Mitte bremst"};
+// Easteregg „Asteroiden“ und „Röhrensturm“ (Vektorgrafik)
+constexpr uint32_t kVectorStepMs = 16;
+constexpr float kAstDegPerStep = 6.0f;         // Asteroiden: eine Ringumdrehung ≈ eine Schiffsumdrehung
+constexpr float kZapRadius = 110.0f;           // Röhrensturm: Superzapper = Mitte antippen
+app::game::AsteroidsGame asteroids;
+AsteroidsScreen asteroidsScreen;
+app::game::TubeGame tube;
+TubeScreen tubeScreen;
+uint32_t vectorNextStepMs = 0;
+bool vectorWasTouched = false;
+
+enum class ActiveGame : uint8_t { Breakout, Race, Asteroids, Tube };
+constexpr int kGameCount = 4;
+const char* const kGameNames[kGameCount] = {"Ringbrecher", "Boxenstopp", "Asteroiden", "Röhrensturm"};
+const char* const kGameDetails[kGameCount] = {"Ring dreht den Schläger", "Ring lenkt, Mitte bremst",
+                                              "Ring dreht, Drücken schießt, Berühren = Schub",
+                                              "Ring wechselt die Bahn, Mitte = Superzapper"};
 ActiveGame activeGame = ActiveGame::Breakout;
 
 net::FavoritesInfo* favorites = nullptr;  // PSRAM (~10 KB), in setup() angelegt
@@ -409,7 +428,7 @@ void loadTable(const char* key, const char* legacyKey, app::game::HighscoreTable
     }
     if (!ok) {
         table.clear(table.lowerIsBetter());
-        if (prefs.isKey(legacyKey)) table.insert("---", prefs.getUInt(legacyKey, 0));  // alter Einzelrekord
+        if (legacyKey && *legacyKey && prefs.isKey(legacyKey)) table.insert("---", prefs.getUInt(legacyKey, 0));  // alter Einzelrekord
     }
     if (prefs.isKey("hs_name")) {
         String n = prefs.getString("hs_name", "AAA");
@@ -421,8 +440,33 @@ void saveTable(const char* key, const app::game::HighscoreTable& table) {
     prefs.putBytes(key, table.data(), app::game::HighscoreTable::size());
 }
 
-app::game::HighscoreTable& activeTable() { return activeGame == ActiveGame::Race ? raceTable : ringTable; }
-const char* activeTableKey() { return activeGame == ActiveGame::Race ? "hs_race" : "hs_ring"; }
+app::game::HighscoreTable& activeTable() {
+    switch (activeGame) {
+        case ActiveGame::Race: return raceTable;
+        case ActiveGame::Asteroids: return astTable;
+        case ActiveGame::Tube: return tubeTable;
+        case ActiveGame::Breakout: break;
+    }
+    return ringTable;
+}
+const char* activeTableKey() {
+    switch (activeGame) {
+        case ActiveGame::Race: return "hs_race";
+        case ActiveGame::Asteroids: return "hs_ast";
+        case ActiveGame::Tube: return "hs_tube";
+        case ActiveGame::Breakout: break;
+    }
+    return "hs_ring";
+}
+const char* activeTitle() {
+    switch (activeGame) {
+        case ActiveGame::Race: return "BOXENSTOPP";
+        case ActiveGame::Asteroids: return "ASTEROIDEN";
+        case ActiveGame::Tube: return "ROEHRENSTURM";
+        case ActiveGame::Breakout: break;
+    }
+    return "RINGBRECHER";
+}
 bool activeIsTime() { return activeGame == ActiveGame::Race; }
 
 /** Ergebnis mit `name` eintragen und speichern. Liefert den Platz (−1 = nicht drin). */
@@ -447,8 +491,7 @@ void boardShow() {
     if (board == Board::Entry) {
         scoreScreen.showEntry(initials, boardValue, activeIsTime(), boardRank);
     } else if (board == Board::Table) {
-        scoreScreen.showTable(activeGame == ActiveGame::Race ? "BOXENSTOPP" : "RINGBRECHER", activeTable(), boardValue,
-                              activeIsTime(), boardRank);
+        scoreScreen.showTable(activeTitle(), activeTable(), boardValue, activeIsTime(), boardRank);
     }
 }
 
@@ -476,8 +519,7 @@ void finishEntry() {
     boardShow();
 }
 
-void startBreakout(uint32_t now);
-void startRace(uint32_t now);
+void startGame(int index, uint32_t now);
 
 /** Taste, solange Ergebnis/Eingabe/Liste zu sehen ist. */
 void boardPress(uint32_t now) {
@@ -490,8 +532,7 @@ void boardPress(uint32_t now) {
             break;
         case Board::Table:  // nochmal
             board = Board::None;
-            if (activeGame == ActiveGame::Race) startRace(now);
-            else startBreakout(now);
+            startGame(static_cast<int>(activeGame), now);
             break;
         case Board::None: break;
     }
@@ -524,11 +565,11 @@ void startBreakout(uint32_t now) {
  * benutzten Buchstaben. So geht ein Rekord nicht verloren, wenn das Gerät mitten im Spiel ausgeht.
  * Die Liste im Speicher bleibt dabei unverändert; eingetragen wird erst am Ende.
  */
-void saveProvisional() {
-    if (!ringTable.qualifies(static_cast<uint32_t>(game.score()))) return;
-    app::game::HighscoreTable copy = ringTable;
-    copy.insert(lastInitials, static_cast<uint32_t>(game.score()));
-    saveTable("hs_ring", copy);
+void saveProvisional(uint32_t score) {
+    if (!activeTable().qualifies(score)) return;
+    app::game::HighscoreTable copy = activeTable();
+    copy.insert(lastInitials, score);
+    saveTable(activeTableKey(), copy);
 }
 
 void startRace(uint32_t now) {
@@ -551,10 +592,43 @@ void startRace(uint32_t now) {
     Serial.printf("SPIEL Boxenstopp gestartet (Bestzeit %lu ms)\n", static_cast<unsigned long>(raceTable.best()));
 }
 
+void startAsteroids(uint32_t now) {
+    loadTable("hs_ast", "", astTable);
+    asteroids.reset();
+    asteroidsScreen.enter(asteroids, astTable.best());
+    vectorNextStepMs = now;
+    board = Board::None;
+    Serial.printf("SPIEL Asteroiden gestartet (Rekord %lu)\n", static_cast<unsigned long>(astTable.best()));
+}
+
+void startTube(uint32_t now) {
+    loadTable("hs_tube", "", tubeTable);
+    tube.reset();
+    tubeScreen.enter(tube, tubeTable.best());
+    vectorNextStepMs = now;
+    board = Board::None;
+    Serial.printf("SPIEL Röhrensturm gestartet (Rekord %lu)\n", static_cast<unsigned long>(tubeTable.best()));
+}
+
 void startGame(int index, uint32_t now) {
-    activeGame = index == 1 ? ActiveGame::Race : ActiveGame::Breakout;
-    if (activeGame == ActiveGame::Race) startRace(now);
-    else startBreakout(now);
+    activeGame = index >= 0 && index < kGameCount ? static_cast<ActiveGame>(index) : ActiveGame::Breakout;
+    switch (activeGame) {
+        case ActiveGame::Race: startRace(now); break;
+        case ActiveGame::Asteroids: startAsteroids(now); break;
+        case ActiveGame::Tube: startTube(now); break;
+        case ActiveGame::Breakout: startBreakout(now); break;
+    }
+}
+
+/** Punkte des laufenden Spiels (Punktespiele; 0 beim Rennen). */
+uint32_t runningScore() {
+    switch (activeGame) {
+        case ActiveGame::Breakout: return static_cast<uint32_t>(game.score());
+        case ActiveGame::Asteroids: return asteroids.state() == app::game::AsteroidsGame::State::Playing ? asteroids.score() : 0;
+        case ActiveGame::Tube: return tube.state() != app::game::TubeGame::State::Ready ? tube.score() : 0;
+        case ActiveGame::Race: break;
+    }
+    return 0;
 }
 
 void gamePress(uint32_t now) {
@@ -562,10 +636,13 @@ void gamePress(uint32_t now) {
         boardPress(now);
         return;
     }
-    if (activeGame == ActiveGame::Race) {
-        if (race) race->press();
-    } else {
-        game.press();
+    switch (activeGame) {
+        case ActiveGame::Race:
+            if (race) race->press();
+            break;
+        case ActiveGame::Asteroids: asteroids.press(); break;  // nur Start; geschossen wird beim Drücken
+        case ActiveGame::Tube: tube.press(); break;            // nur Start; Feuer solange gedrückt
+        case ActiveGame::Breakout: game.press(); break;
     }
 }
 
@@ -577,15 +654,24 @@ void endGame() {
         finishEntry();
     } else if (board == Board::Pending) {
         commitScore(lastInitials, boardValue);
-    } else if (board == Board::None && activeGame == ActiveGame::Breakout && game.score() > 0) {
-        commitScore(lastInitials, static_cast<uint32_t>(game.score()));  // mitten im Spiel beendet
+    } else if (board == Board::None && runningScore() > 0) {
+        commitScore(lastInitials, runningScore());  // mitten im Spiel beendet
     }
     board = Board::None;
-    if (activeGame == ActiveGame::Race) {
-        if (race) Serial.printf("SPIEL Boxenstopp beendet: Runde %d, %lu ms\n", race->lap(), static_cast<unsigned long>(race->raceMs()));
-        return;
+    switch (activeGame) {
+        case ActiveGame::Race:
+            if (race) Serial.printf("SPIEL Boxenstopp beendet: Runde %d, %lu ms\n", race->lap(), static_cast<unsigned long>(race->raceMs()));
+            break;
+        case ActiveGame::Asteroids:
+            Serial.printf("SPIEL Asteroiden beendet: %lu Punkte, Welle %d\n", static_cast<unsigned long>(asteroids.score()), asteroids.wave());
+            break;
+        case ActiveGame::Tube:
+            Serial.printf("SPIEL Röhrensturm beendet: %lu Punkte, Level %d\n", static_cast<unsigned long>(tube.score()), tube.level());
+            break;
+        case ActiveGame::Breakout:
+            Serial.printf("SPIEL beendet: %d Punkte, Level %d\n", game.score(), game.level());
+            break;
     }
-    Serial.printf("SPIEL beendet: %d Punkte, Level %d\n", game.score(), game.level());
 }
 
 /** Ein Durchlauf im Rennspiel: Ring = Lenkrad (in der Box: Auswahl), Mitte antippen = Bremse. */
@@ -635,6 +721,72 @@ void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
     raceScreen.render(*race, raceTable.best(), raceBestLapMs);
 }
 
+/** Feste 60-Hz-Schritte für die Vektorspiele (holt höchstens 4 Schritte nach). */
+template <typename F>
+void vectorSteps(uint32_t now, F stepFn) {
+    int steps = 0;
+    while (static_cast<int32_t>(now - vectorNextStepMs) >= 0 && steps < 4) {
+        stepFn();
+        vectorNextStepMs += kVectorStepMs;
+        ++steps;
+    }
+    if (static_cast<int32_t>(now - vectorNextStepMs) >= 0) vectorNextStepMs = now + kVectorStepMs;
+}
+
+/** Asteroiden: Ring dreht, Drücken schießt (sofort beim Drücken), Berühren = Schub. */
+void asteroidsLoop(uint32_t now, int32_t rawSteps, int32_t detents, bool pressEdge) {
+    if (board != Board::None) {
+        boardLoop(now, detents);
+        return;
+    }
+    using S = app::game::AsteroidsGame::State;
+    if (rawSteps != 0) {
+        asteroids.rotate(rawSteps * kAstDegPerStep);
+        idle.onInput(now);
+    }
+    if (pressEdge) asteroids.fire();
+    int16_t tx, ty;
+    const bool touched = hal::Touch::read(tx, ty);
+    asteroids.setThrust(touched);
+    if (touched) idle.onInput(now);
+    const int livesBefore = asteroids.lives();
+    const auto before = asteroids.state();
+    vectorSteps(now, [] { asteroids.step(kVectorStepMs / 1000.0f); });
+    if (asteroids.state() == S::Playing) idle.onInput(now);
+    if (asteroids.lives() < livesBefore && asteroids.state() == S::Playing) saveProvisional(asteroids.score());
+    asteroidsScreen.render(asteroids, astTable.best());
+    if (before != asteroids.state() && asteroids.state() == S::GameOver) boardBegin(now, asteroids.score());
+}
+
+/** Röhrensturm: Ring wechselt die Bahn, Taste gedrückt halten = Dauerfeuer, Mitte antippen = Superzapper. */
+void tubeLoop(uint32_t now, int32_t rawSteps, int32_t detents, bool buttonHeld) {
+    if (board != Board::None) {
+        boardLoop(now, detents);
+        return;
+    }
+    using S = app::game::TubeGame::State;
+    if (rawSteps != 0) {
+        tube.rotate(rawSteps);
+        idle.onInput(now);
+    }
+    tube.setFire(buttonHeld && tube.state() != S::Ready);
+    int16_t tx, ty;
+    const bool touched = hal::Touch::read(tx, ty);
+    if (touched && !vectorWasTouched) {
+        const float dx = tx - 240.0f, dy = ty - 240.0f;
+        if (dx * dx + dy * dy < kZapRadius * kZapRadius) tube.zap();
+    }
+    if (touched) idle.onInput(now);
+    vectorWasTouched = touched;
+    const int livesBefore = tube.lives();
+    const auto before = tube.state();
+    vectorSteps(now, [] { tube.step(kVectorStepMs / 1000.0f); });
+    if (tube.state() != S::Ready && tube.state() != S::GameOver) idle.onInput(now);
+    if (tube.lives() < livesBefore && tube.state() != S::GameOver) saveProvisional(tube.score());
+    tubeScreen.render(tube, tubeTable.best());
+    if (before != tube.state() && tube.state() == S::GameOver) boardBegin(now, tube.score());
+}
+
 /** Ein Durchlauf im Spiel: Eingaben, Spielschritte im 60-Hz-Takt, Anzeige. */
 void gameLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
     if (board != Board::None) {
@@ -666,7 +818,7 @@ void gameLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
     if (static_cast<int32_t>(now - gameNextStepMs) >= 0) gameNextStepMs = now + kGameStepMs;  // nicht aufholen
     if (game.state() == app::game::RingBreakout::State::Playing) idle.onInput(now);  // nicht dimmen beim Spielen
     if (before == app::game::RingBreakout::State::Playing && game.state() == app::game::RingBreakout::State::Serving) {
-        saveProvisional();  // Ball verloren: Punkte schon jetzt sichern (falls das Gerät ausgeht)
+        saveProvisional(static_cast<uint32_t>(game.score()));  // Ball verloren: Punkte schon jetzt sichern (falls das Gerät ausgeht)
     }
     if (before != game.state() && game.state() == app::game::RingBreakout::State::GameOver) {
         gameScreen.render(game, gameHighscore);  // „Neuer Rekord!“ gegen den bisherigen Rekord
@@ -846,6 +998,7 @@ void loop() {
 
     // Taste – ebenfalls je nach Modus. Ein Druck, der das Display weckt, löst nichts aus.
     const bool buttonRaw = hal::Input::buttonRaw();
+    const bool buttonPressEdge = buttonRaw && !buttonWasPressed;  // Spiele: Schuss schon beim Drücken
     if (buttonRaw && !buttonWasPressed) buttonSwallow = !idle.onInput(now);
     buttonWasPressed = buttonRaw;
     const app::ButtonEvent buttonEvent = button.update(buttonRaw, now);
@@ -895,8 +1048,12 @@ void loop() {
     expireMessage(now);
     if (modes.mode() == app::ModeController::Mode::Game) {
         // Das Spiel zeichnet selbst (am LVGL vorbei) – LVGL pausiert so lange
-        if (activeGame == ActiveGame::Race) raceLoop(now, raw, d);
-        else gameLoop(now, raw, d);
+        switch (activeGame) {
+            case ActiveGame::Race: raceLoop(now, raw, d); break;
+            case ActiveGame::Asteroids: asteroidsLoop(now, raw, d, buttonPressEdge); break;
+            case ActiveGame::Tube: tubeLoop(now, raw, d, buttonRaw); break;
+            case ActiveGame::Breakout: gameLoop(now, raw, d); break;
+        }
         if (idle.tick(now, true)) hal::Display::setBacklight(idle.level());
         diag::logStatusPeriodically(millis(), now);
         delay(2);

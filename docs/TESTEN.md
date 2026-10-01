@@ -437,7 +437,31 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Rekord bleibt nach Neustart erhalten (Log `SPIEL … Rekord`), auch wenn das Gerät mitten im Spiel
       ausgeht (gesichert bei jedem verlorenen Ball)
 
-## Checkliste Bestenliste (beide Spiele)
+## Checkliste Easteregg „Asteroiden“
+
+- [ ] Spielauswahl hat 4 Einträge; „Asteroiden“ → Titel, Felsen treiben, „DRUECKEN: START“
+- [ ] Ring dreht das Schiff in Drehrichtung, eine Ringumdrehung ≈ eine Schiffsumdrehung
+      (sonst `kAstDegPerStep` in `src/RemoteApp.cpp`)
+- [ ] Drücken schießt sofort; Berühren = Schub (Flamme), das Schiff gleitet weiter
+- [ ] Über den Rand → kommt gegenüber wieder herein (Schiff, Felsen, Schüsse)
+- [ ] Felsen zerfallen groß → mittel → klein; Punkte oben; Leben unten als kleine Schiffe
+- [ ] Zusammenstoß → Explosion, nach kurzer Zeit neues Schiff (blinkt, unverwundbar)
+- [ ] Alle Felsen weg → nächste Welle; flüssig auch mit vielen Felsen? (`loop_max_ms`)
+
+## Checkliste Easteregg „Röhrensturm“
+
+- [ ] Titel mit Anleitung, Drücken startet; blaue Röhre, eigene Bahn gelb, Schiff (gelbe Klaue) unten
+- [ ] Eine Rastung = eine Bahn, in Drehrichtung; Taste halten = Dauerfeuer
+- [ ] Flipper (rot) klettern und kippen; oben kippen sie auf das Schiff zu → erwischt = Leben weg
+- [ ] Tanker (lila) zerfallen getroffen in zwei Flipper; Spiker (grün) hinterlassen Stacheln,
+      Schüsse machen Stacheln kürzer
+- [ ] Gegnerschüsse (weiße Kreuze) treffen am Rand; eigene Schüsse fangen sie ab
+- [ ] Mitte antippen: Superzapper (Röhre blitzt weiß, alle Gegner weg); zweites Mal nur einer;
+      grüne Kreuze unten zeigen die Ladungen
+- [ ] Level geschafft → Tauchfahrt durch die Röhre, dann „LEVEL 2“ und eine neue Form
+- [ ] Flüssig? (`loop_max_ms`); nach „GAME OVER“ die Bestenliste
+
+## Checkliste Bestenliste (alle Spiele)
 
 - [ ] Nach „Game Over“/„Ziel“ bleibt das Ergebnis ~2 s stehen, Drücken überspringt
 - [ ] Ergebnis reicht für die Top 5 → „NEUER REKORD!“ bzw. „BESTENLISTE!“, Platz, drei große Buchstaben

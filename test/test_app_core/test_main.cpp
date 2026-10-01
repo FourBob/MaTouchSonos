@@ -11,6 +11,8 @@
 #include "RingBreakout.h"
 #include "RaceGame.h"
 #include "Highscores.h"
+#include "AsteroidsGame.h"
+#include "TubeGame.h"
 #include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
@@ -1215,6 +1217,229 @@ void test_initials_entry() {
     TEST_ASSERT_EQUAL('A', e.letter(1));
 }
 
+// --- Asteroiden -------------------------------------------------------------------
+
+using Ast = app::game::AsteroidsGame;
+static void astSteps(Ast& g, int n) { for (int i = 0; i < n; ++i) g.step(1.0f / 60); }
+
+void test_ast_ready_then_start() {
+    static Ast g;
+    g.reset();
+    TEST_ASSERT_TRUE(g.state() == Ast::State::Ready);
+    TEST_ASSERT_TRUE(g.rocksLeft() > 0);  // Felsen treiben schon auf dem Startbildschirm
+    g.fire();
+    g.press();
+    TEST_ASSERT_TRUE(g.state() == Ast::State::Playing);
+    TEST_ASSERT_TRUE(g.shipAlive());
+    TEST_ASSERT_EQUAL(Ast::kLives, g.lives());
+    TEST_ASSERT_EQUAL_UINT32(0, g.score());
+}
+
+void test_ast_wrap_through_center() {
+    float x = Ast::kWorldR + 5, y = 0;
+    Ast::wrap(x, y);
+    TEST_ASSERT_TRUE(x < 0 && x > -Ast::kWorldR);  // gegenüber wieder herein
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0, y);
+    float a = 10, b = 20;
+    Ast::wrap(a, b);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 10, a);       // innen: unverändert
+}
+
+void test_ast_rotate_thrust_moves_ship() {
+    static Ast g;
+    g.reset();
+    g.press();
+    g.clearRocks();
+    g.rotate(90);  // nach rechts
+    g.setThrust(true);
+    astSteps(g, 30);
+    TEST_ASSERT_TRUE(g.shipX() > 10);
+    TEST_ASSERT_FLOAT_WITHIN(1.0f, 0, g.shipY());
+    g.setThrust(false);
+    const float x = g.shipX();
+    astSteps(g, 60);
+    TEST_ASSERT_TRUE(g.shipX() > x);  // gleitet weiter (Trägheit)
+}
+
+void test_ast_shot_splits_rock_and_scores() {
+    static Ast g;
+    g.reset();
+    g.press();
+    g.clearRocks();
+    g.setWaveDelay(100);
+    g.placeRock(0, 0, -120, 0, 0, 0);  // großer Fels oben, Schiff zeigt nach oben
+    g.fire();
+    astSteps(g, 30);
+    TEST_ASSERT_EQUAL_UINT32(20, g.score());
+    TEST_ASSERT_EQUAL(2, g.rocksLeft());  // zwei mittlere
+    for (int i = 0; i < Ast::kMaxRocks; ++i)
+        if (g.rock(i).alive) TEST_ASSERT_EQUAL(1, g.rock(i).size);
+}
+
+void test_ast_crash_costs_life_and_respawns() {
+    static Ast g;
+    g.reset();
+    g.press();
+    g.clearRocks();
+    g.setInvulnerable(0);
+    g.setWaveDelay(100);
+    g.placeRock(0, 30, 0, -60, 0, 2);  // kleiner Fels fliegt aufs Schiff
+    astSteps(g, 40);
+    TEST_ASSERT_EQUAL(Ast::kLives - 1, g.lives());
+    TEST_ASSERT_FALSE(g.shipAlive());
+    astSteps(g, 60 * 3);
+    TEST_ASSERT_TRUE(g.shipAlive());
+}
+
+void test_ast_game_over_and_next_wave() {
+    static Ast g;
+    g.reset();
+    g.press();
+    const int wave = g.wave();
+    g.clearRocks();
+    astSteps(g, 60 * 3);  // Welle leer → nach kurzer Pause die nächste
+    TEST_ASSERT_EQUAL(wave + 1, g.wave());
+    TEST_ASSERT_TRUE(g.rocksLeft() > 0);
+    // drei Zusammenstöße → vorbei
+    for (int n = 0; n < 3; ++n) {
+        g.clearRocks();
+        g.setWaveDelay(100);
+        g.setInvulnerable(0);
+        g.setShip(0, 0, 0, 0);
+        g.placeRock(0, 0, 0, 0, 0, 0);
+        astSteps(g, 2);
+        astSteps(g, 60 * 6);
+    }
+    TEST_ASSERT_TRUE(g.state() == Ast::State::GameOver);
+}
+
+// --- Röhrensturm -------------------------------------------------------------------
+
+using Tube = app::game::TubeGame;
+static void tubeSteps(Tube& g, int n) { for (int i = 0; i < n; ++i) g.step(1.0f / 60); }
+
+void test_tube_ring_moves_lanes() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    TEST_ASSERT_EQUAL(0, g.playerLane());
+    g.rotate(4);  // eine Rastung
+    TEST_ASSERT_EQUAL(1, g.playerLane());
+    g.rotate(-8);
+    TEST_ASSERT_EQUAL(Tube::kLanes - 1, g.playerLane());  // geschlossene Röhre
+}
+
+void test_tube_shot_kills_flipper() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    g.clearEnemies();
+    g.setSpawnLeft(1);   // Level nicht beenden
+    g.placeEnemy(0, Tube::Type::Flipper, 0, 0.5f);
+    g.setFire(true);
+    tubeSteps(g, 20);
+    g.setFire(false);
+    TEST_ASSERT_FALSE(g.enemy(0).alive);
+    TEST_ASSERT_EQUAL_UINT32(150, g.score());
+}
+
+void test_tube_tanker_splits() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.placeEnemy(0, Tube::Type::Tanker, 0, 0.5f);
+    g.setFire(true);
+    tubeSteps(g, 14);
+    g.setFire(false);
+    TEST_ASSERT_EQUAL(2, g.aliveEnemies());
+    int lanes = 0;
+    for (int i = 0; i < Tube::kMaxEnemies; ++i)
+        if (g.enemy(i).alive) lanes += g.enemy(i).lane;
+    TEST_ASSERT_EQUAL(1 + (Tube::kLanes - 1), lanes);  // Bahnen 1 und 15 (links/rechts von 0)
+}
+
+void test_tube_flipper_on_rim_catches_player() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.setPlayerLane(3);
+    g.placeEnemy(0, Tube::Type::Flipper, 1, 0.99f);
+    tubeSteps(g, 120);
+    TEST_ASSERT_TRUE(g.state() == Tube::State::Dying);
+    TEST_ASSERT_EQUAL(Tube::kLives - 1, g.lives());
+    tubeSteps(g, 120);
+    TEST_ASSERT_TRUE(g.state() == Tube::State::Playing);
+}
+
+void test_tube_level_clear_warp_and_spike() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    g.clearEnemies();
+    tubeSteps(g, 2);
+    TEST_ASSERT_TRUE(g.state() == Tube::State::Warp);
+    tubeSteps(g, 60 * 3);
+    TEST_ASSERT_TRUE(g.state() == Tube::State::Playing);
+    TEST_ASSERT_EQUAL(2, g.level());
+    TEST_ASSERT_EQUAL(1, g.shape());
+    // Stachel in der eigenen Bahn: Tauchen ist tödlich
+    g.clearEnemies();
+    g.setSpike(g.playerLane(), 0.5f);
+    tubeSteps(g, 60 * 2);
+    TEST_ASSERT_TRUE(g.state() == Tube::State::Dying);
+}
+
+void test_tube_shooting_shrinks_spike() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.setSpike(0, 0.5f);
+    g.setFire(true);
+    tubeSteps(g, 60);
+    g.setFire(false);
+    TEST_ASSERT_TRUE(g.spike(0) < 0.5f);
+}
+
+void test_tube_superzapper() {
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.placeEnemy(0, Tube::Type::Flipper, 4, 0.3f);
+    g.placeEnemy(1, Tube::Type::Flipper, 8, 0.3f);
+    g.placeEnemy(2, Tube::Type::Flipper, 12, 0.3f);
+    g.zap();
+    TEST_ASSERT_EQUAL(0, g.aliveEnemies());
+    TEST_ASSERT_EQUAL(1, g.zapsLeft());
+    g.placeEnemy(0, Tube::Type::Flipper, 4, 0.3f);
+    g.placeEnemy(1, Tube::Type::Flipper, 8, 0.3f);
+    g.zap();
+    TEST_ASSERT_EQUAL(1, g.aliveEnemies());  // zweites Mal: nur einer
+    g.zap();
+    TEST_ASSERT_EQUAL(1, g.aliveEnemies());  // dann leer
+}
+
+void test_tube_full_level_spawns_and_plays() {
+    // ohne Eingaben: Gegner erscheinen, das Spiel endet irgendwann (kein Hänger, kein Absturz)
+    static Tube g;
+    g.reset();
+    g.startPlaying();
+    bool sawEnemy = false;
+    for (int n = 0; n < 60 * 600 && g.state() != Tube::State::GameOver; ++n) {
+        g.step(1.0f / 60);
+        if (g.aliveEnemies() > 0) sawEnemy = true;
+    }
+    TEST_ASSERT_TRUE(sawEnemy);
+    TEST_ASSERT_TRUE(g.state() == Tube::State::GameOver);
+}
+
 // --- ImageOps (Albumcover) --------------------------------------------------------
 
 namespace img = app::img;
@@ -1507,6 +1732,20 @@ int main(int, char**) {
     RUN_TEST(test_highscores_name_padding);
     RUN_TEST(test_highscores_save_and_load);
     RUN_TEST(test_initials_entry);
+    RUN_TEST(test_ast_ready_then_start);
+    RUN_TEST(test_ast_wrap_through_center);
+    RUN_TEST(test_ast_rotate_thrust_moves_ship);
+    RUN_TEST(test_ast_shot_splits_rock_and_scores);
+    RUN_TEST(test_ast_crash_costs_life_and_respawns);
+    RUN_TEST(test_ast_game_over_and_next_wave);
+    RUN_TEST(test_tube_ring_moves_lanes);
+    RUN_TEST(test_tube_shot_kills_flipper);
+    RUN_TEST(test_tube_tanker_splits);
+    RUN_TEST(test_tube_flipper_on_rim_catches_player);
+    RUN_TEST(test_tube_level_clear_warp_and_spike);
+    RUN_TEST(test_tube_shooting_shrinks_spike);
+    RUN_TEST(test_tube_superzapper);
+    RUN_TEST(test_tube_full_level_spawns_and_plays);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

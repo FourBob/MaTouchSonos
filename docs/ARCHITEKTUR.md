@@ -280,6 +280,26 @@ deshalb muss man in die Box.
 - **Rekorde:** Bestenliste der Rennzeiten (`hs_race`, siehe unten) und schnellste Runde (`race_lap`,
   sofort nach jeder Runde gesichert). Das Spielobjekt (~9 KB Strecke) liegt im PSRAM.
 
+## Easteregg: „Asteroiden“ und „Röhrensturm“ (Vektorgrafik)
+
+Zwei Automaten-Klassiker in Vektorgrafik, Einträge 3 und 4 der Spielauswahl.
+
+- **Asteroiden** (nach *Asteroids*): Die Welt ist die Bildschirmscheibe; wer den Rand überquert, kommt
+  gegenüber wieder herein (Spiegelung durch die Mitte). Ring dreht das Schiff (eine Ringumdrehung ≈ eine
+  Schiffsumdrehung), Drücken schießt (sofort beim Drücken, nicht erst beim Loslassen), Berühren = Schub.
+  Felsen zerfallen groß → mittel → klein (20/50/100 Punkte), Extraleben alle 10 000. Logik:
+  `app::game::AsteroidsGame`.
+- **Röhrensturm** (nach *Tempest*, das am Automaten auch mit einem Drehknopf gespielt wurde): Blick in
+  eine Röhre aus 16 Bahnen, das Schiff sitzt am Rand. Eine Rastung = eine Bahn, Taste halten =
+  Dauerfeuer, Mitte antippen = Superzapper (je Level einmal alle, dann einer). Gegner: Flipper (kippen
+  in Nachbarbahnen, fangen oben das Schiff), Tanker (zerfallen in zwei Flipper), Spiker (hinterlassen
+  Stacheln). Level geschafft → Tauchfahrt durch die Röhre (Stachel in der eigenen Bahn = tödlich),
+  danach neue Form: Kreis, Quadrat, Stern, Blume, Dreieck. Logik: `app::game::TubeGame`.
+- **Anzeige:** `VectorCanvas` hält die Linien des letzten Bildes und löscht nur, was nicht mehr da ist;
+  danach werden alle aktuellen Linien gezeichnet. Darauf bauen `AsteroidsScreen` und `TubeScreen`.
+  Perspektive der Röhre: jede Tiefe ist eine verkleinerte Kopie des Randes (Faktor 1/(1+6·Abstand)).
+- **Bestenliste:** `hs_ast`, `hs_tube`; bei jedem verlorenen Leben vorläufig gesichert.
+
 ## Bestenliste der Spiele
 
 Wie am Spielautomaten: Top 5 je Spiel mit drei Buchstaben. Nach „Game Over“ bzw. „Ziel“ bleibt das
