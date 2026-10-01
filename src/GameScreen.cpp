@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 #include "Display.h"
 
@@ -39,6 +40,100 @@ void centeredText(const char* text, int y, uint8_t size, uint16_t color) {
     gfx()->print(text);
 }
 
+// --- Schläger: eigene Kreisbogen-Füllung ---------------------------------------------------
+// Arduino_GFX::fillArc teilt bei genau 0°/180° durch null und erzeugt dann Keile; zusammengesetzte
+// Teilbögen treffen außerdem nicht exakt dieselben Pixel. Deshalb hier ein eigener, deterministischer
+// Test je Pixel: Derselbe Test entscheidet beim Zeichnen und beim Löschen – es bleibt nichts stehen.
+
+constexpr int kPaddleInner = static_cast<int>(RingBreakout::kPaddleR);
+constexpr int kPaddleOuter = static_cast<int>(RingBreakout::kPaddleR + RingBreakout::kPaddleThick);
+
+/** Kreisbogen um die Mitte: Richtung der Bogenmitte und cos² des halben Öffnungswinkels (< 90°). */
+struct Arc {
+    float mx = 0, my = 0, cos2 = 0;
+    bool valid = false;
+};
+
+Arc makeArc(float centerDeg, float halfDeg) {
+    Arc a;
+    const float rad = centerDeg * 0.017453292f;
+    a.mx = cosf(rad);
+    a.my = sinf(rad);
+    const float c = cosf(halfDeg * 0.017453292f);
+    a.cos2 = c * c;
+    a.valid = true;
+    return a;
+}
+
+/** Liegt der Punkt (dx, dy) mit Abstand² r2 im Öffnungswinkel des Bogens? */
+bool inArc(const Arc& a, float dx, float dy, float r2) {
+    if (!a.valid) return false;
+    const float d = dx * a.mx + dy * a.my;
+    return d > 0 && d * d >= r2 * a.cos2;
+}
+
+struct Box {
+    int x0, y0, x1, y1;
+};
+
+/** Umschließendes Rechteck eines Schläger-Bogens (abgetastet, mit Rand). */
+Box arcBox(float centerDeg, float halfDeg) {
+    Box b{kCx, kCy, kCx, kCy};
+    bool first = true;
+    for (float t = -halfDeg; ; t += 2.0f) {
+        if (t > halfDeg) t = halfDeg;
+        const float rad = (centerDeg + t) * 0.017453292f;
+        for (int r : {kPaddleInner, kPaddleOuter}) {
+            const int x = kCx + static_cast<int>(lroundf(r * cosf(rad)));
+            const int y = kCy + static_cast<int>(lroundf(r * sinf(rad)));
+            if (first) { b = {x, y, x, y}; first = false; }
+            if (x < b.x0) b.x0 = x;
+            if (x > b.x1) b.x1 = x;
+            if (y < b.y0) b.y0 = y;
+            if (y > b.y1) b.y1 = y;
+        }
+        if (t >= halfDeg) break;
+    }
+    b.x0 = b.x0 - 2 < 0 ? 0 : b.x0 - 2;
+    b.y0 = b.y0 - 2 < 0 ? 0 : b.y0 - 2;
+    b.x1 = b.x1 + 2 > 479 ? 479 : b.x1 + 2;
+    b.y1 = b.y1 + 2 > 479 ? 479 : b.y1 + 2;
+    return b;
+}
+
+/**
+ * Im Rechteck jeden Pixel des Schläger-Rings prüfen: im Bogen `on` → weiß, sonst im Bogen `off` → schwarz,
+ * sonst unverändert. Gleiche Farben werden zu waagerechten Linien zusammengefasst.
+ */
+void paintPaddleRegion(const Box& b, const Arc& on, const Arc& off) {
+    const float ri2 = static_cast<float>(kPaddleInner * kPaddleInner);
+    const float ro2 = static_cast<float>(kPaddleOuter * kPaddleOuter);
+    for (int y = b.y0; y <= b.y1; ++y) {
+        const float dy = y + 0.5f - kCy;
+        int runStart = -1;
+        uint16_t runColor = 0;
+        for (int x = b.x0; x <= b.x1 + 1; ++x) {
+            int color = -1;  // −1 = nicht anfassen
+            if (x <= b.x1) {
+                const float dx = x + 0.5f - kCx;
+                const float r2 = dx * dx + dy * dy;
+                if (r2 >= ri2 && r2 <= ro2) {
+                    if (inArc(on, dx, dy, r2)) color = WHITE;
+                    else if (inArc(off, dx, dy, r2)) color = BLACK;
+                }
+            }
+            if (runStart >= 0 && (color != static_cast<int>(runColor))) {
+                gfx()->writeFastHLine(runStart, y, x - runStart, runColor);
+                runStart = -1;
+            }
+            if (color >= 0 && runStart < 0) {
+                runStart = x;
+                runColor = static_cast<uint16_t>(color);
+            }
+        }
+    }
+}
+
 }  // namespace
 
 void GameScreen::enter(const RingBreakout& game, int highscore) {
@@ -57,13 +152,6 @@ void GameScreen::drawBrick(int ring, int seg, bool alive) {
                    static_cast<int16_t>(RingBreakout::ringInner(ring)), seg * step + kBrickGapDeg / 2,
                    (seg + 1) * step - kBrickGapDeg / 2, alive ? ringColor(ring) : BLACK);
     bricks_[ring][seg] = alive;
-}
-
-void GameScreen::drawPaddleArc(float from, float to, bool visible) {
-    if (to - from < 0.05f) return;
-    gfx()->fillArc(kCx, kCy, static_cast<int16_t>(RingBreakout::kPaddleR + RingBreakout::kPaddleThick),
-                   static_cast<int16_t>(RingBreakout::kPaddleR), RingBreakout::normalize(from),
-                   RingBreakout::normalize(to), visible ? WHITE : BLACK);
 }
 
 void GameScreen::drawHub(const RingBreakout& game) {
@@ -99,6 +187,25 @@ void GameScreen::drawMessage(const RingBreakout& game, int highscore) {
     }
 }
 
+void GameScreen::paintPaddle(float oldAngle, float newAngle, float halfWidth, bool first) {
+    const Arc now = makeArc(newAngle, halfWidth);
+    if (first) {
+        paintPaddleRegion(arcBox(newAngle, halfWidth), now, Arc{});
+        return;
+    }
+    const float delta = RingBreakout::angleDiff(newAngle, oldAngle);
+    const Arc before = makeArc(oldAngle, halfWidth);
+    if (fabsf(delta) < 2 * halfWidth + 4) {
+        // Alter und neuer Schläger überlappen bzw. liegen nah beieinander: ein gemeinsamer Bereich,
+        // jeder Pixel wird genau einmal geschrieben (kein Flackern)
+        const float mid = oldAngle + delta / 2;
+        paintPaddleRegion(arcBox(mid, halfWidth + fabsf(delta) / 2 + 1), now, before);
+    } else {
+        paintPaddleRegion(arcBox(oldAngle, halfWidth), now, before);
+        paintPaddleRegion(arcBox(newAngle, halfWidth), now, before);
+    }
+}
+
 void GameScreen::render(const RingBreakout& game, int highscore) {
     gfx()->startWrite();
 
@@ -111,6 +218,11 @@ void GameScreen::render(const RingBreakout& game, int highscore) {
         gfx()->fillCircle(ballX_, ballY_, br, BLACK);
         const float dx = static_cast<float>(ballX_ - kCx), dy = static_cast<float>(ballY_ - kCy);
         const float r = sqrtf(dx * dx + dy * dy);
+        if (paddle_ >= 0 && r + br >= kPaddleInner - 1) {
+            // Ball lag am Schläger: die angeschnittenen Pixel wieder weiß machen
+            const Box box{ballX_ - br - 1, ballY_ - br - 1, ballX_ + br + 1, ballY_ + br + 1};
+            paintPaddleRegion(box, makeArc(paddle_, game.paddleWidth() / 2), Arc{});
+        }
         if (r > RingBreakout::ringInner(0) - br && r < RingBreakout::ringOuter(RingBreakout::kRings - 1) + br) {
             const float angle = RingBreakout::normalize(atan2f(dy, dx) * 57.29578f);
             for (int ring = 0; ring < RingBreakout::kRings; ++ring) {
@@ -129,24 +241,19 @@ void GameScreen::render(const RingBreakout& game, int highscore) {
         for (int s = 0; s < RingBreakout::segments(ring); ++s)
             if (game.brick(ring, s) != bricks_[ring][s]) drawBrick(ring, s, game.brick(ring, s));
 
-    // Schläger: bei kleinen Bewegungen nur den frei werdenden und den neuen Streifen zeichnen
+    // Schläger (eigene Füllroutine, siehe paintPaddleRegion)
     const float half = game.paddleWidth() / 2;
     const float now = game.paddleAngle();
-    if (paddle_ < 0) {
-        drawPaddleArc(now - half, now + half, true);
+    if (paddle_ >= 0 && half != paddleHalf_) {
+        // Schläger wurde schmaler (Level): alten vollständig löschen, neuen zeichnen
+        paintPaddleRegion(arcBox(paddle_, paddleHalf_), Arc{}, makeArc(paddle_, paddleHalf_));
+        paintPaddle(paddle_, now, half, true);
+    } else if (paddle_ < 0) {
+        paintPaddle(paddle_, now, half, true);
     } else if (now != paddle_) {
-        const float delta = RingBreakout::angleDiff(now, paddle_);
-        if (fabsf(delta) >= game.paddleWidth()) {
-            drawPaddleArc(paddle_ - half, paddle_ + half, false);
-            drawPaddleArc(now - half, now + half, true);
-        } else if (delta > 0) {
-            drawPaddleArc(paddle_ - half, now - half, false);
-            drawPaddleArc(paddle_ + half, now + half, true);
-        } else {
-            drawPaddleArc(now + half, paddle_ + half, false);
-            drawPaddleArc(now - half, paddle_ - half, true);
-        }
+        paintPaddle(paddle_, now, half, false);
     }
+    paddleHalf_ = half;
     paddle_ = now;
 
     // Ball neu

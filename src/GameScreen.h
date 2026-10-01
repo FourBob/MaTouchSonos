@@ -21,13 +21,14 @@ public:
 
 private:
     void drawBrick(int ring, int seg, bool alive);
-    void drawPaddleArc(float from, float to, bool visible);
+    void paintPaddle(float oldAngle, float newAngle, float halfWidth, bool first);
     void drawHub(const app::game::RingBreakout& game);
     void drawMessage(const app::game::RingBreakout& game, int highscore);
 
     bool bricks_[app::game::RingBreakout::kRings][app::game::RingBreakout::kMaxSegments] = {};
     int ballX_ = -1000, ballY_ = -1000;
     float paddle_ = -1;
+    float paddleHalf_ = 0;
     int score_ = -1, lives_ = -1, level_ = -1, highscore_ = -1;
     int state_ = -1;
 };
