@@ -252,7 +252,7 @@ die Steine liegen als 4 Ringe um die Mitte (10/14/18/22 Segmente), die Mitte zei
 - **Eingabe:** Ring = Schläger (Rohschritte, 4,5° je Schritt = 18° je Rastung), Antippen = Schläger zum Finger
   (nur beim Aufsetzen und frühestens 0,6 s nach dem Drehen – beim Drehen liegen oft Finger am Glasrand),
   kurz drücken = Ball abschießen/neu starten, lang drücken = Ende. Kein Menü-Timeout, Display dimmt nicht beim Spielen.
-- **Rekord:** im NVS (`game_hi`). Musik und Live-Updates laufen währenddessen normal weiter.
+- **Rekord:** im NVS (`game_hi`), gesichert bei jedem verlorenen Ball, im Game Over und beim Beenden. Musik und Live-Updates laufen währenddessen normal weiter.
 
 ## Easteregg: „Boxenstopp“
 
@@ -262,7 +262,10 @@ deshalb muss man in die Box.
 
 - **Logik:** `app::game::RaceGame` (app_core, getestet): Strecke aus ~1000 Segmenten zu 200 Einheiten, jede mit
   Krümmung und Merkern (Startlinie, Boxenschild, Boxenspur). Fester Zeitschritt 1/60 s. Tempo, Fliehkraft in
-  Kurven, Gras bremst, Auffahren auf einen Gegner kostet Tempo. Sprit reicht für gut 3 Runden; die Reifen auf der
+  Kurven, Gras bremst. Gegner weichen Langsameren (auch dem Spieler) zur freien Seite aus oder bremsen;
+  Kollisionen werden über den ganzen Zeitschritt geprüft (sonst „springt“ man bei Höchsttempo durch einen
+  Wagen): Auffahren kostet Tempo, von hinten getroffen gibt einen Schubs, seitlich schiebt auseinander.
+  Niemand fährt durch einen anderen hindurch. Sprit reicht für gut 3 Runden; die Reifen auf der
   Kurvenaußenseite verschleißen schneller, abgefahrene Reifen kosten Grip, ein Platten kostet Tempo.
 - **Box:** Rechts auf der gelben Boxenspur hinter der Startlinie halten. Dann zeigt der Bildschirm das Auto von oben,
   rundherum vier Reifen (Farbe = Zustand), Tank und LOS, im Uhrzeigersinn so angeordnet, wie man sie mit dem Ring
@@ -273,7 +276,8 @@ deshalb muss man in die Box.
   sich in Kurven.
 - **Eingabe:** Ring = Lenkrad (Rohschritte, das Lenkrad stellt sich von selbst zurück), Bildschirmmitte berühren =
   Bremse, in der Box: Ring wählt, kurz drücken führt aus. Lang drücken = Ende.
-- **Bestzeit:** im NVS (`race_best`). Das Spielobjekt (~9 KB Strecke) liegt im PSRAM.
+- **Rekorde:** im NVS – Bestzeit fürs Rennen (`race_best`, im Ziel) und schnellste Runde (`race_lap`,
+  sofort nach jeder Runde). Das Spielobjekt (~9 KB Strecke) liegt im PSRAM.
 
 ## Designentscheidungen
 

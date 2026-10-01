@@ -101,7 +101,9 @@ constexpr float kRaceBrakeRadius = 140.0f;  // Bremse: Finger in der Bildschirmm
 app::game::RaceGame* race = nullptr;
 RaceScreen raceScreen;
 uint32_t raceNextStepMs = 0;
-uint32_t raceBestMs = 0;          // NVS-Schlüssel "race_best"
+uint32_t raceBestMs = 0;          // NVS-Schlüssel "race_best" (ganzes Rennen)
+uint32_t raceBestLapMs = 0;       // NVS-Schlüssel "race_lap" (schnellste Runde)
+int raceSeenLaps = 0;             // beendete Runden, die schon auf Rundenrekord geprüft sind
 
 enum class ActiveGame : uint8_t { Breakout, Race };
 constexpr int kGameCount = 2;
@@ -408,8 +410,10 @@ void startRace(uint32_t now) {
         race = new (mem) app::game::RaceGame();
     }
     raceBestMs = prefs.isKey("race_best") ? prefs.getUInt("race_best", 0) : 0;
+    raceBestLapMs = prefs.isKey("race_lap") ? prefs.getUInt("race_lap", 0) : 0;
     race->reset();
-    raceScreen.enter(*race, raceBestMs);
+    raceSeenLaps = 0;
+    raceScreen.enter(*race, raceBestMs, raceBestLapMs);
     raceNextStepMs = now;
     Serial.printf("SPIEL Boxenstopp gestartet (Bestzeit %lu ms)\n", static_cast<unsigned long>(raceBestMs));
 }
@@ -462,6 +466,17 @@ void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
     }
     if (static_cast<int32_t>(now - raceNextStepMs) >= 0) raceNextStepMs = now + kRaceStepMs;  // nicht aufholen
     if (race->state() != app::game::RaceGame::State::Finished) idle.onInput(now);  // nicht dimmen beim Fahren
+    if (race->completedLaps() < raceSeenLaps) raceSeenLaps = 0;  // neues Rennen (Drücken im Ziel)
+    if (race->completedLaps() > raceSeenLaps) {
+        // Rundenrekord sofort sichern – nicht erst im Ziel
+        raceSeenLaps = race->completedLaps();
+        const uint32_t lapMs = race->lastLapTimeMs();
+        if (lapMs > 0 && (raceBestLapMs == 0 || lapMs < raceBestLapMs)) {
+            raceBestLapMs = lapMs;
+            prefs.putUInt("race_lap", raceBestLapMs);
+            Serial.printf("SPIEL Boxenstopp neue beste Runde: %lu ms\n", static_cast<unsigned long>(lapMs));
+        }
+    }
     if (before != race->state() && race->state() == app::game::RaceGame::State::Finished) {
         const uint32_t previous = raceBestMs;
         if (raceBestMs == 0 || race->raceMs() < raceBestMs) {
@@ -470,10 +485,10 @@ void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
         }
         Serial.printf("SPIEL Boxenstopp im Ziel: %lu ms (Bestzeit vorher %lu ms)\n",
                       static_cast<unsigned long>(race->raceMs()), static_cast<unsigned long>(previous));
-        raceScreen.render(*race, previous);  // „Neue Bestzeit!“ gegen die alte prüfen
+        raceScreen.render(*race, previous, raceBestLapMs);  // „Neue Bestzeit!“ gegen die alte prüfen
         return;
     }
-    raceScreen.render(*race, raceBestMs);
+    raceScreen.render(*race, raceBestMs, raceBestLapMs);
 }
 
 /** Ein Durchlauf im Spiel: Eingaben, Spielschritte im 60-Hz-Takt, Anzeige. */
@@ -502,6 +517,9 @@ void gameLoop(uint32_t now, int32_t rawSteps) {
     }
     if (static_cast<int32_t>(now - gameNextStepMs) >= 0) gameNextStepMs = now + kGameStepMs;  // nicht aufholen
     if (game.state() == app::game::RingBreakout::State::Playing) idle.onInput(now);  // nicht dimmen beim Spielen
+    if (before == app::game::RingBreakout::State::Playing && game.state() == app::game::RingBreakout::State::Serving) {
+        saveHighscore();  // Ball verloren: Rekord schon jetzt sichern (falls das Gerät ausgeht)
+    }
     if (before != game.state() && game.state() == app::game::RingBreakout::State::GameOver) {
         const int previous = gameHighscore;
         saveHighscore();

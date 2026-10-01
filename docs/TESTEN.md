@@ -434,7 +434,8 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Ball verloren → Leben weniger; nach dem dritten „GAME OVER“, kurz drücken = neues Spiel
 - [ ] Alle Steine weg → „LEVEL 2“, schneller
 - [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig (Cover, Titel, Ring)
-- [ ] Rekord bleibt nach Neustart erhalten (Log `SPIEL … Rekord`)
+- [ ] Rekord bleibt nach Neustart erhalten (Log `SPIEL … Rekord`), auch wenn das Gerät mitten im Spiel
+      ausgeht (gesichert bei jedem verlorenen Ball)
 
 ## Checkliste Easteregg „Boxenstopp“
 
@@ -444,6 +445,8 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Ring lenkt **in Drehrichtung**, die Straße krümmt sich in Kurven, die Berge ziehen mit
 - [ ] Bildschirmmitte berühren → bremst; auf dem Gras wird man langsamer
 - [ ] Gegner kommen näher und lassen sich überholen; Auffahren kostet Tempo
+- [ ] Niemand fährt durch: auch bei Höchsttempo nicht durch einen Gegner; langsam fahren → Gegner von hinten
+      weichen aus oder fahren auf (Schubs); seitlich hineinlenken → man wird abgedrängt
 - [ ] Anzeige oben: Runde/Zeit, km/h, Sprit-Balken, 4 Reifen-Kästchen (grün → gelb → orange → rot)
 - [ ] Vor der Startlinie: „BOX >>“; rechts auf die gelbe Spur → Boxenbild (Auto von oben)
 - [ ] In der Box: Ring wählt reihum (vorne links, vorne rechts, LOS, hinten rechts, hinten links, Tank);
@@ -452,4 +455,6 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Nach 5 Runden „ZIEL!“ mit Zeit und Bestzeit; kurz drücken = neues Rennen
 - [ ] Flüssig? (Log `loop_max_ms` im Spiel), Lenkgefühl ok? (sonst `kSteerPerStep` in `RaceGame.h`)
 - [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig; Bestzeit bleibt nach Neustart
+- [ ] Rundenrekord: nach einer Runde Log `SPIEL Boxenstopp neue beste Runde`; Gerät mitten im Rennen
+      vom Strom trennen → im Ziel des nächsten Rennens steht „BESTE RUNDE“ mit dieser Zeit
 

@@ -1022,6 +1022,107 @@ void test_race_collision_slows() {
     TEST_ASSERT_TRUE(r.tireWear(Race::FrontLeft) >= 0.04f);
 }
 
+/** Abstand Gegner i ↔ eigenes Auto auf der Rundstrecke (+ = Gegner vorn). */
+static float raceGap(const Race& r, int i) {
+    float g = r.car(i).z - (r.position() + Race::kPlayerZ);
+    const float len = r.trackLength();
+    if (g < -len / 2) g += len;
+    if (g > len / 2) g -= len;
+    return g;
+}
+static bool raceOverlaps(const Race& r, int i) {
+    return fabsf(raceGap(r, i)) < Race::kCarLength - 1.0f &&
+           fabsf(r.car(i).x - r.playerX()) < 2 * Race::kCarHalfWidth - 0.001f;
+}
+
+void test_race_no_tunneling_at_top_speed() {
+    // Bei Höchsttempo (ein Segment pro Bild) darf man nicht durch einen langsamen Wagen „springen“
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(0);
+    r.setSpeed(Race::kMaxSpeed);
+    r.placeCar(0, Race::kPlayerZ + 250, 0.0f, Race::kMaxSpeed * 0.2f);
+    for (int n = 0; n < 120; ++n) {
+        r.step(1.0f / 60);
+        TEST_ASSERT_TRUE(raceGap(r, 0) > 0 || fabsf(r.car(0).x - r.playerX()) >= 2 * Race::kCarHalfWidth);
+        TEST_ASSERT_FALSE(raceOverlaps(r, 0));
+    }
+}
+
+void test_race_car_from_behind_pushes_and_stays_behind() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(5000);
+    r.setSpeed(Race::kMaxSpeed * 0.2f);
+    r.setBrake(true);
+    // schneller Gegner direkt hinter uns, schon überlappend (kann nicht mehr ausweichen)
+    r.placeCar(0, 5000 + Race::kPlayerZ - 60, r.playerX(), Race::kMaxSpeed * 0.8f);
+    const float before = r.speed();
+    r.step(1.0f / 60);
+    TEST_ASSERT_TRUE(raceGap(r, 0) <= -Race::kCarLength + 1.0f);
+    TEST_ASSERT_TRUE(r.speed() > before);  // angeschoben
+    TEST_ASSERT_TRUE(r.car(0).speed < Race::kMaxSpeed * 0.8f);
+}
+
+void test_race_opponent_dodges_slow_player() {
+    // Gegner kommt von hinten auf einen fast stehenden Spieler zu: weicht aus statt durchzufahren
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(5000);
+    r.setSpeed(0);
+    r.setBrake(true);
+    r.placeCar(0, 5000 + Race::kPlayerZ - 1500, r.playerX(), Race::kMaxSpeed * 0.5f);
+    bool passed = false;
+    for (int n = 0; n < 600; ++n) {
+        r.step(1.0f / 60);
+        TEST_ASSERT_FALSE(raceOverlaps(r, 0));
+        if (raceGap(r, 0) > Race::kCarLength) passed = true;
+    }
+    TEST_ASSERT_TRUE(passed);                              // vorbeigefahren …
+    TEST_ASSERT_TRUE(fabsf(r.car(0).x - r.playerX()) >= 2 * Race::kCarHalfWidth);  // … seitlich daneben
+}
+
+void test_race_side_contact_pushes_apart() {
+    Race& r = freshRace();
+    r.parkCarsFarAway();
+    r.startRacing();
+    r.setPosition(5000);
+    r.setSpeed(Race::kMaxSpeed * 0.5f);
+    r.setPlayerX(0.0f);
+    r.placeCar(0, 5000 + Race::kPlayerZ, 0.5f, Race::kMaxSpeed * 0.5f);  // daneben, rechts
+    r.steer(17);                                                          // voll nach rechts
+    for (int n = 0; n < 60; ++n) {
+        r.step(1.0f / 60);
+        TEST_ASSERT_FALSE(raceOverlaps(r, 0));
+    }
+    // nie ineinander: entweder links daneben geblieben oder längs auseinander
+    TEST_ASSERT_TRUE(r.playerX() < r.car(0).x || fabsf(raceGap(r, 0)) >= Race::kCarLength - 1.0f);
+}
+
+void test_race_opponents_do_not_overlap() {
+    Race& r = freshRace();
+    r.startRacing();
+    r.setPlayerX(5.0f);  // Spieler aus dem Weg (neben der Strecke)
+    for (int n = 0; n < 60 * 60; ++n) {
+        r.step(1.0f / 60);
+        r.setSpeed(0);
+        r.setPlayerX(5.0f);
+        for (int i = 0; i < Race::kCars; ++i)
+            for (int j = i + 1; j < Race::kCars; ++j) {
+                float g = r.car(j).z - r.car(i).z;
+                const float len = r.trackLength();
+                if (g < -len / 2) g += len;
+                if (g > len / 2) g -= len;
+                const bool overlap = fabsf(g) < Race::kCarLength - 1.0f &&
+                                     fabsf(r.car(i).x - r.car(j).x) < 2 * Race::kCarHalfWidth - 0.001f;
+                TEST_ASSERT_FALSE(overlap);
+            }
+    }
+}
+
 // --- ImageOps (Albumcover) --------------------------------------------------------
 
 namespace img = app::img;
@@ -1304,6 +1405,11 @@ int main(int, char**) {
     RUN_TEST(test_race_pit_stop);
     RUN_TEST(test_race_no_pit_when_left);
     RUN_TEST(test_race_collision_slows);
+    RUN_TEST(test_race_no_tunneling_at_top_speed);
+    RUN_TEST(test_race_car_from_behind_pushes_and_stays_behind);
+    RUN_TEST(test_race_opponent_dodges_slow_player);
+    RUN_TEST(test_race_side_contact_pushes_apart);
+    RUN_TEST(test_race_opponents_do_not_overlap);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

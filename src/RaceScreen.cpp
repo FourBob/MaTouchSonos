@@ -127,13 +127,13 @@ int mountainTop(int x) {
 
 }  // namespace
 
-void RaceScreen::enter(const RaceGame& race, uint32_t bestMs) {
+void RaceScreen::enter(const RaceGame& race, uint32_t bestMs, uint32_t bestLapMs) {
     initPalette();
     lastState_ = -1;
     frame_ = 0;
     skyOffset_ = 0;
     drawnSkyOffset_ = -100000;
-    render(race, bestMs);
+    render(race, bestMs, bestLapMs);
 }
 
 void RaceScreen::drawSky() {
@@ -458,7 +458,7 @@ void RaceScreen::drawPitGauges(const RaceGame& race) {
     centeredText(line, 74, 2, pal.text, BLACK);
 }
 
-void RaceScreen::drawFinish(const RaceGame& race, uint32_t bestMs) {
+void RaceScreen::drawFinish(const RaceGame& race, uint32_t bestMs, uint32_t bestLapMs) {
     gfx()->fillScreen(BLACK);
     centeredText("ZIEL!", 130, 4, pal.good, BLACK);
     char t[16];
@@ -472,11 +472,16 @@ void RaceScreen::drawFinish(const RaceGame& race, uint32_t bestMs) {
         snprintf(line, sizeof(line), "BESTZEIT %s", t);
         centeredText(line, 255, 2, pal.textDim, BLACK);
     }
-    centeredText("DRUECKEN: NOCHMAL", 320, 2, pal.textDim, BLACK);
-    centeredText("LANG: ENDE", 344, 2, pal.textDim, BLACK);
+    if (bestLapMs > 0) {
+        formatTime(bestLapMs, t, sizeof(t));
+        snprintf(line, sizeof(line), "BESTE RUNDE %s", t);
+        centeredText(line, 280, 2, pal.textDim, BLACK);
+    }
+    centeredText("DRUECKEN: NOCHMAL", 330, 2, pal.textDim, BLACK);
+    centeredText("LANG: ENDE", 354, 2, pal.textDim, BLACK);
 }
 
-void RaceScreen::render(const RaceGame& race, uint32_t bestMs) {
+void RaceScreen::render(const RaceGame& race, uint32_t bestMs, uint32_t bestLapMs) {
     ++frame_;
     gfx()->startWrite();
     const int state = static_cast<int>(race.state());
@@ -524,7 +529,7 @@ void RaceScreen::render(const RaceGame& race, uint32_t bestMs) {
             break;
         case RaceGame::State::Finished:
             if (!finishDrawn_) {
-                drawFinish(race, bestMs);
+                drawFinish(race, bestMs, bestLapMs);
                 finishDrawn_ = true;
             }
             break;

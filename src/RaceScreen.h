@@ -21,8 +21,9 @@
  */
 class RaceScreen {
 public:
-    void enter(const app::game::RaceGame& race, uint32_t bestMs);
-    void render(const app::game::RaceGame& race, uint32_t bestMs);
+    /** bestMs = Bestzeit fürs ganze Rennen, bestLapMs = schnellste Runde (0 = noch keine). */
+    void enter(const app::game::RaceGame& race, uint32_t bestMs, uint32_t bestLapMs);
+    void render(const app::game::RaceGame& race, uint32_t bestMs, uint32_t bestLapMs);
 
 private:
     struct Projected {
@@ -41,7 +42,7 @@ private:
     void drawPitStatic(const app::game::RaceGame& race);
     void drawPitItems(const app::game::RaceGame& race);
     void drawPitGauges(const app::game::RaceGame& race);
-    void drawFinish(const app::game::RaceGame& race, uint32_t bestMs);
+    void drawFinish(const app::game::RaceGame& race, uint32_t bestMs, uint32_t bestLapMs);
 
     static constexpr int kDrawDistance = 100;
     Projected proj_[kDrawDistance] = {};
