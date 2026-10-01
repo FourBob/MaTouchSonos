@@ -62,6 +62,7 @@ constexpr uint32_t kMessageMs = 4000;      // Fehlermeldungen (z. B. „Nichts z
 constexpr uint32_t kHintMs = 1500;         // kurze Hinweise (z. B. „Nächster Titel“)
 constexpr float kGameDegPerStep = 4.5f;    // Spiel: Schläger-Drehung je Encoder-Rohschritt (18° je Rastung)
 constexpr uint32_t kGameStepMs = 16;       // Spiel: ~60 Schritte/s
+constexpr uint32_t kGameTouchAfterRingMs = 600;  // Spiel: Antippen zählt erst so lange nach dem Drehen
 constexpr bool kEncoderDiagnostics = false; // true: jede Encoder-Bewegung loggen (ENC-DIAG), zur Fehlersuche
 
 app::ButtonDetector button;
@@ -87,6 +88,8 @@ app::game::RingBreakout game;
 GameScreen gameScreen;
 uint32_t gameNextStepMs = 0;
 int gameHighscore = 0;            // NVS-Schlüssel "game_hi"
+uint32_t gameLastRingMs = 0;      // letzte Ringbewegung im Spiel
+bool gameWasTouched = false;
 
 net::FavoritesInfo* favorites = nullptr;  // PSRAM (~10 KB), in setup() angelegt
 uint32_t favoritesVersion = 0;
@@ -381,14 +384,19 @@ void endGame() {
 void gameLoop(uint32_t now, int32_t rawSteps) {
     if (rawSteps != 0) {
         game.movePaddle(rawSteps * kGameDegPerStep);
+        gameLastRingMs = now;
         idle.onInput(now);
     }
+    // Antippen: Schläger springt zum Finger – nur beim Aufsetzen und nicht, während am Ring gedreht wird.
+    // Wer dreht, berührt oft den Glasrand; ein liegender Finger würde den Schläger sonst festhalten.
     int16_t tx, ty;
-    if (hal::Touch::read(tx, ty)) {  // Antippen: Schläger springt zum Finger (nicht in der Mitte)
+    const bool touched = hal::Touch::read(tx, ty);
+    if (touched && !gameWasTouched && now - gameLastRingMs > kGameTouchAfterRingMs) {
         const float dx = tx - 240.0f, dy = ty - 240.0f;
         if (dx * dx + dy * dy > 80.0f * 80.0f) game.setPaddleAngle(atan2f(dy, dx) * 57.29578f);
-        idle.onInput(now);
     }
+    if (touched) idle.onInput(now);
+    gameWasTouched = touched;
     const auto before = game.state();
     int steps = 0;
     while (static_cast<int32_t>(now - gameNextStepMs) >= 0 && steps < 4) {

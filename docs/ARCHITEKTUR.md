@@ -249,7 +249,8 @@ die Steine liegen als 4 Ringe um die Mitte (10/14/18/22 Segmente), die Mitte zei
   Abprallwinkel am Schläger je nach Trefferpunkt, Level werden schneller und der Schläger schmaler.
 - **Anzeige:** `GameScreen` zeichnet **direkt über Arduino_GFX** (`hal::Display::gfx()`), nur Ball, Schläger,
   getroffene Steine und geänderte Zahlen. LVGL pausiert solange, beim Beenden wird die Oberfläche neu gezeichnet.
-- **Eingabe:** Ring = Schläger (Rohschritte, 4,5° je Schritt = 18° je Rastung), Antippen = Schläger zum Finger,
+- **Eingabe:** Ring = Schläger (Rohschritte, 4,5° je Schritt = 18° je Rastung), Antippen = Schläger zum Finger
+  (nur beim Aufsetzen und frühestens 0,6 s nach dem Drehen – beim Drehen liegen oft Finger am Glasrand),
   kurz drücken = Ball abschießen/neu starten, lang drücken = Ende. Kein Menü-Timeout, Display dimmt nicht beim Spielen.
 - **Rekord:** im NVS (`game_hi`). Musik und Live-Updates laufen währenddessen normal weiter.
 
