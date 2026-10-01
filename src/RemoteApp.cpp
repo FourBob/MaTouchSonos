@@ -56,7 +56,7 @@ namespace {
 
 constexpr uint32_t kMessageMs = 4000;      // Fehlermeldungen (z. B. „Nichts zum Abspielen“)
 constexpr uint32_t kHintMs = 1500;         // kurze Hinweise (z. B. „Nächster Titel“)
-constexpr bool kEncoderDiagnostics = true; // vorübergehend: jede Encoder-Bewegung loggen (ENC-DIAG)
+constexpr bool kEncoderDiagnostics = false; // true: jede Encoder-Bewegung loggen (ENC-DIAG), zur Fehlersuche
 
 app::ButtonDetector button;
 app::VolumeController volume;
