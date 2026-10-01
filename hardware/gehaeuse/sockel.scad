@@ -32,12 +32,12 @@ drueckweg = 2;        // Kopf bewegt sich beim Drücken so weit auf den Körper 
 usb_abstand = 17.9;   // USB-C-Buchse: Abstand zur Körpermitte
 
 /* [Befestigung (Gehäuse-Dome)] */
-dom_tiefe = 5.0;      // Becherrand → Oberkante der drei Gehäuse-Dome. BITTE MESSEN
+dom_tiefe = 1.2;      // Becherrand → Oberkante der drei Gehäuse-Dome (gemessen: auf der Ebene des Innenrands)
 becher_rand_d = 48;   // Innen-Ø des Bechers ganz am Rand (gemessen)
 becher_rand_t = 1.2;  // so tief reicht dieser Rand, darunter wird der Becher enger (gemessen)
 becher_innen_d = 46;  // Innen-Ø darunter, wo die Dome an der Wand sitzen (aus dem Foto geschätzt)
 dom_loch = 1.8;       // Loch im Dom (gemessen) – passt für selbstschneidende M2-Schrauben
-schraube_l = 16;      // Länge der M2-Schrauben (Gewinde, ohne Kopf)
+schraube_l = 12;      // Länge der M2-Schrauben (Gewinde, ohne Kopf)
 einschraub = 4;       // so tief greift die Schraube in den Dom
 saeule_d = 4.0;       // Säule auf dem Dom (muss durch die Aussparung der Platine passen)
 schraube_loch = 2.4;  // Durchgang für M2

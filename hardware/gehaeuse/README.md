@@ -53,7 +53,7 @@ ohne Stützen, innen darf es etwas rau sein.
 
 | Teil | Menge | Hinweis |
 |---|---|---|
-| Schraube M2 × 16, Linsen-/Flachkopf (Kopf-Ø ≤ 4,2 mm) | 3 | Selbstschneidend für Kunststoff („PT“/„Kunststoffschraube“), passend zum Loch in den Domen (siehe unten). |
+| Schraube M2 × 12, Linsen-/Flachkopf (Kopf-Ø ≤ 4,2 mm) | 3 | Selbstschneidend für Kunststoff („PT“/„Kunststoffschraube“), passend zum Loch in den Domen (siehe unten). |
 | Schraubendreher PH0/PH1 mit langem, schlankem Schaft (≥ 80 mm, Ø ≤ 4 mm) | 1 | Die Kanäle sind bis zu ~70 mm lang |
 | Silikonfüße Ø 10 mm (z. B. 3M Bumpon) | 4 | |
 | Unterlegscheiben M20 (Ø 37 × 3 mm) | 2 | optional, Beschwerung |
@@ -61,8 +61,8 @@ ohne Stützen, innen darf es etwas rau sein.
 
 **Vor dem Drucken messen** (Rückseite offen, Schieblehre):
 - **`dom_tiefe`:** Abstand vom Becherrand bis zur Oberkante der drei leeren Gehäuse-Dome (in den
-  Aussparungen der Platine; Standard 5,0 mm). Mit dem Tiefenmaß der Schieblehre an allen drei Domen
-  messen. Die Säulen müssen aufliegen; wenn du unsicher bist, lieber 0,2 mm mehr eintragen.
+  Aussparungen der Platine). Gemessen: Die Dome enden auf der Ebene des Innenrands, also 1,2 mm.
+  Die Säulen müssen aufliegen; bei einem anderen Gerät lieber 0,2 mm mehr eintragen.
 - **Becher innen:** ganz am Rand Ø 48 mm auf 1,2 mm Tiefe (`becher_rand_d`, `becher_rand_t`, gemessen),
   darunter enger (`becher_innen_d`, aus dem Foto ~46 mm). Die Säulen werden zur Wand hin abgeflacht,
   damit sie nicht anstoßen.
@@ -105,10 +105,10 @@ und `dome` anpassen (Radius in mm, Winkel in Grad, Blick von vorn, Buchse bei 90
 | `schwebe` | 16 | Abstand der untersten Kopfkante zum Tisch |
 | `spiel`, `rippe` | 0.35, 0.5 | Passung der Aufnahme (siehe Passtest) |
 | `usb_abstand` | 17.9 | Lage der USB-C-Buchse neben der Körpermitte (aus der Platinendatei von Makerfabs) |
-| `dom_tiefe` | 5.0 | Becherrand → Oberkante der Gehäuse-Dome. **Messen!** |
+| `dom_tiefe` | 1.2 | Becherrand → Oberkante der Gehäuse-Dome (gemessen) |
 | `becher_rand_d`, `becher_rand_t` | 48, 1.2 | Innen-Ø und Tiefe des Randes ganz oben im Becher (gemessen) |
 | `becher_innen_d` | 46 | Innen-Ø darunter, an den Domen (aus dem Foto) |
-| `schraube_l`, `einschraub` | 16, 4 | Schraubenlänge und wie tief sie in den Dom greift |
+| `schraube_l`, `einschraub` | 12, 4 | Schraubenlänge und wie tief sie in den Dom greift |
 | `dome` | – | Lage der drei Gehäuse-Dome (aus dem Foto, mit `schablone.stl` prüfen) |
 | `fuss_d` | 92 | Durchmesser der Standfläche |
 
