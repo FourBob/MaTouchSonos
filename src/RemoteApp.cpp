@@ -1,4 +1,4 @@
-// Fernbedienung – Stand Schritt 7: Now Playing mit Cover, Lautstärke, Play/Pause, Titel wechseln,
+// Fernbedienung – Stand Schritt 9: Now Playing mit Cover, Lautstärke, Play/Pause, Titel wechseln,
 // Ringmenü, Spulen, Raumwahl (Anlage wird automatisch gefunden) und Favoriten.
 //
 // Ablauf pro Schleifendurchlauf (Kern 1):
@@ -13,6 +13,8 @@
 //   Wischen    -> rechts: nächster, links: vorheriger Titel              -> SonosLink.transport(Next/Previous)
 //   SonosLink-Ereignisse + Now-Playing-Momentaufnahme        -> Controller -> Anzeige
 // Das Netzwerk läuft in der SonosLink-Task auf Kern 0 und blockiert die UI nie.
+// Energiesparen (IdleController): nach 30 s gedimmt, nach 2 min aus (nicht während Musik läuft).
+// Eine Eingabe bei ausgeschaltetem Display weckt nur und wird verworfen.
 
 #if !MTS_HWTEST
 
@@ -28,6 +30,7 @@
 #include "Diagnostics.h"
 #include "CoverLoader.h"
 #include "Display.h"
+#include "IdleController.h"
 #include "Input.h"
 #include "ModeController.h"
 #include "NowPlaying.h"
@@ -59,6 +62,9 @@ app::VolumeController volume;
 app::PlaybackController playback;
 app::ProgressTracker progress;
 app::ModeController modes;
+app::IdleController idle;        // Energiesparen: hell → gedimmt → aus
+bool buttonWasPressed = false;   // Rohpegel im letzten Durchlauf (Flanke = Eingabe fürs Energiesparen)
+bool buttonSwallow = false;      // dieser Tastendruck hat nur geweckt → Kurz/Lang verwerfen
 NowPlayingScreen screen;
 int32_t rawSinceLastDetent = 0;
 
@@ -256,6 +262,10 @@ void togglePlayPause(uint32_t now) {
 
 void onSwipe(NowPlayingScreen::Swipe dir) {
     const uint32_t now = millis();
+    if (!idle.onInput(now)) {
+        Serial.println(F("SWIPE weckt nur"));
+        return;
+    }
     // Nach rechts wischen = weiter (wie Blättern nach vorn), nach links = zurück.
     // Im Geräte-Test von Schritt 3 als intuitiver empfunden als umgekehrt.
     const bool next = dir == NowPlayingScreen::Swipe::Right;
@@ -418,7 +428,7 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
 }  // namespace
 
 void setup() {
-    diag::logBootInfo("Fernbedienung (Schritt 7)");
+    diag::logBootInfo("Fernbedienung (Schritt 9)");
 
     if (!hal::Display::begin()) {
         Serial.println(F("FEHLER: Display-Initialisierung fehlgeschlagen"));
@@ -450,7 +460,10 @@ void loop() {
     // Drehring – Bedeutung je nach Modus (Lautstärke, Menüauswahl, Zielposition)
     rawSinceLastDetent += hal::Input::takeRawSteps();
     const int32_t d = hal::Input::takeDetents();
-    if (d != 0) {
+    if (d != 0 && !idle.onInput(now)) {
+        Serial.printf("ENC %+ld weckt nur\n", static_cast<long>(d));  // Weck-Dreh ändert nichts
+        rawSinceLastDetent = 0;
+    } else if (d != 0) {
         const auto mode = modes.mode();
         apply(modes.onDetents(d, now, modeContext(now)), now);
         if (mode == app::ModeController::Mode::Normal) {
@@ -464,11 +477,19 @@ void loop() {
     int toSend;
     if (volume.takeValueToSend(now, toSend)) net::SonosLink::setVolume(toSend);
 
-    // Taste – ebenfalls je nach Modus
-    switch (button.update(hal::Input::buttonRaw(), now)) {
-        case app::ButtonEvent::Short: apply(modes.onShortPress(now, modeContext(now)), now); break;
-        case app::ButtonEvent::Long: apply(modes.onLongPress(now), now); break;
-        case app::ButtonEvent::None: break;
+    // Taste – ebenfalls je nach Modus. Ein Druck, der das Display weckt, löst nichts aus.
+    const bool buttonRaw = hal::Input::buttonRaw();
+    if (buttonRaw && !buttonWasPressed) buttonSwallow = !idle.onInput(now);
+    buttonWasPressed = buttonRaw;
+    const app::ButtonEvent buttonEvent = button.update(buttonRaw, now);
+    if (buttonEvent != app::ButtonEvent::None && buttonSwallow) {
+        Serial.println(F("BTN weckt nur"));
+    } else {
+        switch (buttonEvent) {
+            case app::ButtonEvent::Short: apply(modes.onShortPress(now, modeContext(now)), now); break;
+            case app::ButtonEvent::Long: apply(modes.onLongPress(now), now); break;
+            case app::ButtonEvent::None: break;
+        }
     }
     apply(modes.tick(now), now);  // Menü/Spulen nach 10 s ohne Eingabe schließen
 
@@ -506,7 +527,16 @@ void loop() {
     updateProgress(now);
     expireMessage(now);
     screen.tick(now);
-    lv_timer_handler();
+    lv_timer_handler();  // liest auch den Touch (Wischen → onSwipe)
+
+    // Energiesparen: jede Berührung zählt als Eingabe; Helligkeit nachführen
+    if (hal::Display::takeTouchActivity()) idle.onInput(now);
+    if (idle.tick(now, isPlaying())) {
+        hal::Display::setBacklight(idle.level());
+        const auto st = idle.state();
+        Serial.printf("DISPLAY %s\n", st == app::IdleController::State::Active ? "hell"
+                                       : st == app::IdleController::State::Dimmed ? "gedimmt" : "aus");
+    }
     diag::logStatusPeriodically(millis(), now);
     delay(5);
 }

@@ -7,6 +7,7 @@
 
 #include "ButtonDetector.h"
 #include "DetentTracker.h"
+#include "IdleController.h"
 #include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
@@ -606,6 +607,66 @@ void test_mode_favorites_not_available_without_list() {
     TEST_ASSERT_TRUE(m.mode() == Mode::Normal);
 }
 
+// --- IdleController (Energiesparen) ------------------------------------------------
+
+using Idle = app::IdleController;
+
+void test_idle_dims_then_turns_off_when_nothing_plays() {
+    Idle idle;
+    TEST_ASSERT_FALSE(idle.tick(29999, false));
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Active);
+    TEST_ASSERT_EQUAL_UINT8(255, idle.level());
+    TEST_ASSERT_TRUE(idle.tick(30000, false));
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Dimmed);
+    TEST_ASSERT_EQUAL_UINT8(40, idle.level());
+    TEST_ASSERT_FALSE(idle.tick(119999, false));
+    TEST_ASSERT_TRUE(idle.tick(120000, false));
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Off);
+    TEST_ASSERT_EQUAL_UINT8(0, idle.level());
+}
+
+void test_idle_stays_dimmed_while_playing() {
+    Idle idle;
+    idle.tick(30000, true);
+    TEST_ASSERT_FALSE(idle.tick(600000, true));  // 10 min: weiter gedimmt
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Dimmed);
+    TEST_ASSERT_TRUE(idle.tick(600100, false));  // Pause → aus (lange genug ohne Eingabe)
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Off);
+    TEST_ASSERT_TRUE(idle.tick(700000, true));   // Wiedergabe startet aus der App → gedimmt an
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Dimmed);
+}
+
+void test_idle_input_while_dimmed_is_executed() {
+    Idle idle;
+    idle.tick(30000, false);
+    TEST_ASSERT_TRUE(idle.onInput(31000));  // gedimmt ist noch sichtbar: Eingabe zählt
+    TEST_ASSERT_TRUE(idle.tick(31001, false));
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Active);
+    TEST_ASSERT_FALSE(idle.tick(60999, false));  // 30 s ab der letzten Eingabe
+    TEST_ASSERT_TRUE(idle.tick(61000, false));
+}
+
+void test_idle_wake_from_off_swallows_input_and_grace() {
+    Idle idle;
+    idle.tick(120000, false);
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Off);
+    TEST_ASSERT_FALSE(idle.onInput(200000));  // weckt nur
+    TEST_ASSERT_TRUE(idle.tick(200001, false));
+    TEST_ASSERT_TRUE(idle.state() == Idle::State::Active);
+    TEST_ASSERT_FALSE(idle.onInput(200300));  // Weck-Dreh geht weiter: noch verworfen
+    TEST_ASSERT_FALSE(idle.onInput(200599));
+    TEST_ASSERT_TRUE(idle.onInput(200600));   // danach normal
+    TEST_ASSERT_TRUE(idle.onInput(200700));
+}
+
+void test_idle_brightness_change_reported_once() {
+    Idle idle;
+    idle.tick(120000, false);
+    idle.onInput(130000);
+    TEST_ASSERT_TRUE(idle.tick(130010, false));
+    TEST_ASSERT_FALSE(idle.tick(130020, false));
+}
+
 // --- ImageOps (Albumcover) --------------------------------------------------------
 
 namespace img = app::img;
@@ -862,6 +923,11 @@ int main(int, char**) {
     RUN_TEST(test_mode_favorite_picker_select_and_remember);
     RUN_TEST(test_mode_favorite_picker_clamped_cancel_timeout);
     RUN_TEST(test_mode_favorites_not_available_without_list);
+    RUN_TEST(test_idle_dims_then_turns_off_when_nothing_plays);
+    RUN_TEST(test_idle_stays_dimmed_while_playing);
+    RUN_TEST(test_idle_input_while_dimmed_is_executed);
+    RUN_TEST(test_idle_wake_from_off_swallows_input_and_grace);
+    RUN_TEST(test_idle_brightness_change_reported_once);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

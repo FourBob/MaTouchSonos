@@ -33,6 +33,13 @@ Arduino_RGB_Display* gfx = new Arduino_RGB_Display(
 // während der vorige kopiert wird.
 constexpr uint32_t kBufferPixels = LCD_WIDTH * LCD_HEIGHT / 10;
 
+// Hintergrundbeleuchtung per PWM (LEDC). 20 kHz: unhörbar, 8 Bit reichen für sanftes Dimmen.
+constexpr uint8_t kBacklightChannel = 7;
+constexpr uint32_t kBacklightFreq = 20000;
+constexpr uint8_t kBacklightBits = 8;
+
+volatile bool touchSeen = false;  // seit dem letzten takeTouchActivity() berührt
+
 lv_disp_draw_buf_t drawBuf;
 lv_disp_drv_t dispDrv;
 lv_indev_drv_t touchDrv;
@@ -47,6 +54,7 @@ void flushCb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* colors) {
 void touchReadCb(lv_indev_drv_t*, lv_indev_data_t* data) {
     int16_t x, y;
     if (Touch::read(x, y)) {
+        touchSeen = true;
         data->state = LV_INDEV_STATE_PRESSED;
         data->point.x = x;
         data->point.y = y;
@@ -71,7 +79,8 @@ bool Display::begin() {
     }
     gfx->fillScreen(BLACK);
 
-    pinMode(LCD_BACKLIGHT, OUTPUT);
+    ledcSetup(kBacklightChannel, kBacklightFreq, kBacklightBits);
+    ledcAttachPin(LCD_BACKLIGHT, kBacklightChannel);
     setBacklight(255);
 
     lv_init();
@@ -103,9 +112,12 @@ bool Display::begin() {
     return true;
 }
 
-void Display::setBacklight(uint8_t level) {
-    // Schritt 0: nur an/aus. PWM-Dimmen folgt in Schritt 9.
-    digitalWrite(LCD_BACKLIGHT, level > 0 ? HIGH : LOW);
+void Display::setBacklight(uint8_t level) { ledcWrite(kBacklightChannel, level); }
+
+bool Display::takeTouchActivity() {
+    const bool seen = touchSeen;
+    touchSeen = false;
+    return seen;
 }
 
 }  // namespace hal

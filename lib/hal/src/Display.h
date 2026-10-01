@@ -21,8 +21,14 @@ public:
     /** @return false, wenn Display oder Puffer nicht initialisiert werden konnten. */
     static bool begin();
 
-    /** Helligkeit der Hintergrundbeleuchtung (0 = aus, 255 = voll). */
+    /** Helligkeit der Hintergrundbeleuchtung (0 = aus, 255 = voll), per PWM gedimmt. */
     static void setBacklight(uint8_t level);
+
+    /**
+     * Wurde das Display seit dem letzten Aufruf berührt? Der Touch wird in lv_timer_handler()
+     * gelesen – also danach abfragen. Für das Energiesparen (jede Berührung zählt als Eingabe).
+     */
+    static bool takeTouchActivity();
 };
 
 }  // namespace hal

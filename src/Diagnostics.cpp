@@ -1,12 +1,29 @@
 #include "Diagnostics.h"
 
 #include <Arduino.h>
+#include <esp_system.h>
 
 namespace diag {
 namespace {
 constexpr uint32_t kStatusLogIntervalMs = 5000;
 uint32_t lastStatusLog = 0;
 uint32_t loopMaxMs = 0;
+
+/** Warum ist das Gerät zuletzt neu gestartet? Wichtig für den Dauertest (Absturz, Watchdog, Spannung). */
+const char* resetReason() {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON: return "Einschalten";
+        case ESP_RST_SW: return "Neustart per Software";
+        case ESP_RST_PANIC: return "ABSTURZ (Exception/Panic)";
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT: return "WATCHDOG";
+        case ESP_RST_BROWNOUT: return "SPANNUNGSEINBRUCH (Netzteil/Kabel?)";
+        case ESP_RST_DEEPSLEEP: return "Aufwachen aus Tiefschlaf";
+        case ESP_RST_EXT: return "Reset-Taste";
+        default: return "unbekannt";
+    }
+}
 }  // namespace
 
 void logBootInfo(const char* mode) {
@@ -17,6 +34,7 @@ void logBootInfo(const char* mode) {
     Serial.printf("Flash: %lu MB\n", static_cast<unsigned long>(ESP.getFlashChipSize() / (1024 * 1024)));
     // Ein kleiner Teil des 8-MB-PSRAM ist reserviert, daher mit Nachkommastelle statt abgerundet.
     Serial.printf("PSRAM: %.1f MB\n", ESP.getPsramSize() / (1024.0 * 1024.0));
+    Serial.printf("Letzter Neustart: %s\n", resetReason());
 }
 
 void logStatusPeriodically(uint32_t nowMs, uint32_t loopStartMs) {
@@ -25,8 +43,10 @@ void logStatusPeriodically(uint32_t nowMs, uint32_t loopStartMs) {
 
     if (nowMs - lastStatusLog < kStatusLogIntervalMs) return;
     lastStatusLog = nowMs;
-    Serial.printf("STATUS heap_frei=%lu psram_frei=%lu uptime_s=%lu loop_max_ms=%lu\n",
+    // heap_min = kleinster freier Heap seit dem Start: sinkt er im Dauertest stetig, gibt es ein Leck.
+    Serial.printf("STATUS heap_frei=%lu heap_min=%lu psram_frei=%lu uptime_s=%lu loop_max_ms=%lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
+                  static_cast<unsigned long>(ESP.getMinFreeHeap()),
                   static_cast<unsigned long>(ESP.getFreePsram()),
                   static_cast<unsigned long>(nowMs / 1000),
                   static_cast<unsigned long>(loopMaxMs));
