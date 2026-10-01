@@ -252,7 +252,8 @@ die Steine liegen als 4 Ringe um die Mitte (10/14/18/22 Segmente), die Mitte zei
 - **Eingabe:** Ring = Schläger (Rohschritte, 4,5° je Schritt = 18° je Rastung), Antippen = Schläger zum Finger
   (nur beim Aufsetzen und frühestens 0,6 s nach dem Drehen – beim Drehen liegen oft Finger am Glasrand),
   kurz drücken = Ball abschießen/neu starten, lang drücken = Ende. Kein Menü-Timeout, Display dimmt nicht beim Spielen.
-- **Rekord:** im NVS (`game_hi`), gesichert bei jedem verlorenen Ball, im Game Over und beim Beenden. Musik und Live-Updates laufen währenddessen normal weiter.
+- **Bestenliste:** siehe unten (`hs_ring`). Bei jedem verlorenen Ball werden die Punkte vorläufig
+  mit den zuletzt benutzten Buchstaben gesichert – falls das Gerät mitten im Spiel ausgeht. Musik und Live-Updates laufen währenddessen normal weiter.
 
 ## Easteregg: „Boxenstopp“
 
@@ -276,8 +277,22 @@ deshalb muss man in die Box.
   sich in Kurven.
 - **Eingabe:** Ring = Lenkrad (Rohschritte, das Lenkrad stellt sich von selbst zurück), Bildschirmmitte berühren =
   Bremse, in der Box: Ring wählt, kurz drücken führt aus. Lang drücken = Ende.
-- **Rekorde:** im NVS – Bestzeit fürs Rennen (`race_best`, im Ziel) und schnellste Runde (`race_lap`,
-  sofort nach jeder Runde). Das Spielobjekt (~9 KB Strecke) liegt im PSRAM.
+- **Rekorde:** Bestenliste der Rennzeiten (`hs_race`, siehe unten) und schnellste Runde (`race_lap`,
+  sofort nach jeder Runde gesichert). Das Spielobjekt (~9 KB Strecke) liegt im PSRAM.
+
+## Bestenliste der Spiele
+
+Wie am Spielautomaten: Top 5 je Spiel mit drei Buchstaben. Nach „Game Over“ bzw. „Ziel“ bleibt das
+Ergebnis 2 s stehen (Drücken überspringt). Reicht es für die Liste, folgt die Eingabe: Ring wählt den
+Buchstaben (A–Z, 0–9, -), Drücken geht zur nächsten Stelle. Vorbelegt sind die zuletzt eingegebenen
+Buchstaben, Drücken-Drücken-Drücken trägt also schnell ein. Danach die Liste mit dem neuen Eintrag
+hervorgehoben; Drücken = nochmal, lang = Ende. Wer während der Eingabe lang drückt, wird mit den
+bisherigen Buchstaben eingetragen.
+
+- **Logik:** `app::game::HighscoreTable` und `InitialsEntry` (app_core, getestet). Die Liste ist ein
+  fester Block mit Versionsbyte und wird so im NVS gespeichert (`hs_ring`, `hs_race`, Buchstaben `hs_name`).
+  Ältere Einzelrekorde (`game_hi`, `race_best`) werden beim ersten Start als „---“ übernommen.
+- **Anzeige:** `ScoreScreen` (direkt über Arduino_GFX).
 
 ## Designentscheidungen
 

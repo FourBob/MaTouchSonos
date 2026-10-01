@@ -477,7 +477,7 @@ void RaceScreen::drawFinish(const RaceGame& race, uint32_t bestMs, uint32_t best
         snprintf(line, sizeof(line), "BESTE RUNDE %s", t);
         centeredText(line, 280, 2, pal.textDim, BLACK);
     }
-    centeredText("DRUECKEN: NOCHMAL", 330, 2, pal.textDim, BLACK);
+    centeredText("DRUECKEN: WEITER", 330, 2, pal.textDim, BLACK);
     centeredText("LANG: ENDE", 354, 2, pal.textDim, BLACK);
 }
 

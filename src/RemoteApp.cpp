@@ -41,6 +41,8 @@
 #include "PlaybackController.h"
 #include "RaceGame.h"
 #include "RaceScreen.h"
+#include "Highscores.h"
+#include "ScoreScreen.h"
 #include "ProgressTracker.h"
 #include "RingBreakout.h"
 #include "SonosLink.h"
@@ -91,7 +93,7 @@ uint32_t coverVersion = 0;       // zuletzt angezeigtes Cover
 app::game::RingBreakout game;
 GameScreen gameScreen;
 uint32_t gameNextStepMs = 0;
-int gameHighscore = 0;            // NVS-Schlüssel "game_hi"
+int gameHighscore = 0;            // bester Eintrag der Bestenliste (Anzeige im Spiel)
 uint32_t gameLastRingMs = 0;      // letzte Ringbewegung im Spiel
 bool gameWasTouched = false;
 
@@ -101,9 +103,22 @@ constexpr float kRaceBrakeRadius = 140.0f;  // Bremse: Finger in der Bildschirmm
 app::game::RaceGame* race = nullptr;
 RaceScreen raceScreen;
 uint32_t raceNextStepMs = 0;
-uint32_t raceBestMs = 0;          // NVS-Schlüssel "race_best" (ganzes Rennen)
 uint32_t raceBestLapMs = 0;       // NVS-Schlüssel "race_lap" (schnellste Runde)
 int raceSeenLaps = 0;             // beendete Runden, die schon auf Rundenrekord geprüft sind
+
+// Bestenlisten (Top 5 mit drei Buchstaben). NVS: "hs_ring" (Punkte), "hs_race" (Zeiten), "hs_name"
+// (zuletzt eingegebene Buchstaben). Ältere Einzelrekorde ("game_hi", "race_best") werden übernommen.
+constexpr uint32_t kBoardDelayMs = 2000;  // so lange bleibt „Game Over“/„Ziel“ stehen
+enum class Board : uint8_t { None, Pending, Entry, Table };
+Board board = Board::None;
+uint32_t boardAtMs = 0;           // Pending: ab dann Eingabe bzw. Liste
+uint32_t boardValue = 0;          // erreichte Punkte bzw. Zeit
+int boardRank = -1;               // Platz in der Liste (−1 = nicht drin)
+app::game::HighscoreTable ringTable(false);
+app::game::HighscoreTable raceTable(true);
+app::game::InitialsEntry initials;
+char lastInitials[4] = "AAA";
+ScoreScreen scoreScreen;
 
 enum class ActiveGame : uint8_t { Breakout, Race };
 constexpr int kGameCount = 2;
@@ -383,20 +398,137 @@ void showGamePicker(int index) {
     screen.showPicker(MTS_SYMBOL_GAMEPAD "  Spiel wählen", kGameNames, kGameCount, index, -1, kGameDetails[index]);
 }
 
+// --- Bestenliste ---
+
+void loadTable(const char* key, const char* legacyKey, app::game::HighscoreTable& table) {
+    uint8_t buf[app::game::HighscoreTable::size()];
+    bool ok = false;
+    if (prefs.isKey(key) && prefs.getBytesLength(key) == sizeof(buf)) {
+        prefs.getBytes(key, buf, sizeof(buf));
+        ok = table.load(buf, sizeof(buf));
+    }
+    if (!ok) {
+        table.clear(table.lowerIsBetter());
+        if (prefs.isKey(legacyKey)) table.insert("---", prefs.getUInt(legacyKey, 0));  // alter Einzelrekord
+    }
+    if (prefs.isKey("hs_name")) {
+        String n = prefs.getString("hs_name", "AAA");
+        strlcpy(lastInitials, n.c_str(), sizeof(lastInitials));
+    }
+}
+
+void saveTable(const char* key, const app::game::HighscoreTable& table) {
+    prefs.putBytes(key, table.data(), app::game::HighscoreTable::size());
+}
+
+app::game::HighscoreTable& activeTable() { return activeGame == ActiveGame::Race ? raceTable : ringTable; }
+const char* activeTableKey() { return activeGame == ActiveGame::Race ? "hs_race" : "hs_ring"; }
+bool activeIsTime() { return activeGame == ActiveGame::Race; }
+
+/** Ergebnis mit `name` eintragen und speichern. Liefert den Platz (−1 = nicht drin). */
+int commitScore(const char* name, uint32_t value) {
+    const int rank = activeTable().insert(name, value);
+    if (rank >= 0) {
+        saveTable(activeTableKey(), activeTable());
+        Serial.printf("SPIEL Bestenliste: Platz %d für %s (%lu)\n", rank + 1, name, static_cast<unsigned long>(value));
+    }
+    return rank;
+}
+
+/** Spiel vorbei: Ergebnis kurz stehen lassen, danach Eingabe (falls in der Liste) bzw. Liste. */
+void boardBegin(uint32_t now, uint32_t value) {
+    board = Board::Pending;
+    boardAtMs = now + kBoardDelayMs;
+    boardValue = value;
+    boardRank = -1;
+}
+
+void boardShow() {
+    if (board == Board::Entry) {
+        scoreScreen.showEntry(initials, boardValue, activeIsTime(), boardRank);
+    } else if (board == Board::Table) {
+        scoreScreen.showTable(activeGame == ActiveGame::Race ? "BOXENSTOPP" : "RINGBRECHER", activeTable(), boardValue,
+                              activeIsTime(), boardRank);
+    }
+}
+
+/** Aus „Pending“ weiter: in die Liste → Buchstaben eingeben, sonst gleich die Liste. */
+void boardAdvance() {
+    scoreScreen.reset();
+    boardRank = activeTable().rankFor(boardValue);
+    if (boardRank >= 0) {
+        board = Board::Entry;
+        initials.start(lastInitials);
+    } else {
+        board = Board::Table;
+    }
+    boardShow();
+}
+
+void finishEntry() {
+    char name[4];
+    initials.name(name);
+    strlcpy(lastInitials, name, sizeof(lastInitials));
+    prefs.putString("hs_name", name);
+    boardRank = commitScore(name, boardValue);
+    if (activeGame == ActiveGame::Breakout) gameHighscore = static_cast<int>(ringTable.best());
+    board = Board::Table;
+    boardShow();
+}
+
+void startBreakout(uint32_t now);
+void startRace(uint32_t now);
+
+/** Taste, solange Ergebnis/Eingabe/Liste zu sehen ist. */
+void boardPress(uint32_t now) {
+    switch (board) {
+        case Board::Pending: boardAdvance(); break;
+        case Board::Entry:
+            initials.press();
+            if (initials.done()) finishEntry();
+            else boardShow();
+            break;
+        case Board::Table:  // nochmal
+            board = Board::None;
+            if (activeGame == ActiveGame::Race) startRace(now);
+            else startBreakout(now);
+            break;
+        case Board::None: break;
+    }
+}
+
+/** Ein Durchlauf, solange die Bestenliste dran ist (das Spiel selbst ruht). */
+void boardLoop(uint32_t now, int32_t detents) {
+    if (board == Board::Pending && static_cast<int32_t>(now - boardAtMs) >= 0) boardAdvance();
+    if (board == Board::Entry && detents != 0) {
+        initials.rotate(static_cast<int>(detents));
+        idle.onInput(now);
+        boardShow();
+    }
+}
+
+// --- Spiele ---
+
 void startBreakout(uint32_t now) {
-    gameHighscore = prefs.isKey("game_hi") ? static_cast<int>(prefs.getUInt("game_hi", 0)) : 0;
+    loadTable("hs_ring", "game_hi", ringTable);
+    gameHighscore = static_cast<int>(ringTable.best());
     game.reset();
     gameScreen.enter(game, gameHighscore);
     gameNextStepMs = now;
+    board = Board::None;
     Serial.printf("SPIEL Ringbrecher gestartet (Rekord %d)\n", gameHighscore);
 }
 
-void saveHighscore() {
-    if (game.score() > gameHighscore) {
-        gameHighscore = game.score();
-        prefs.putUInt("game_hi", static_cast<uint32_t>(gameHighscore));
-        Serial.printf("SPIEL neuer Rekord: %d\n", gameHighscore);
-    }
+/**
+ * Ringbrecher: Punkte vorläufig sichern (Ball verloren, Spiel abgebrochen) – mit den zuletzt
+ * benutzten Buchstaben. So geht ein Rekord nicht verloren, wenn das Gerät mitten im Spiel ausgeht.
+ * Die Liste im Speicher bleibt dabei unverändert; eingetragen wird erst am Ende.
+ */
+void saveProvisional() {
+    if (!ringTable.qualifies(static_cast<uint32_t>(game.score()))) return;
+    app::game::HighscoreTable copy = ringTable;
+    copy.insert(lastInitials, static_cast<uint32_t>(game.score()));
+    saveTable("hs_ring", copy);
 }
 
 void startRace(uint32_t now) {
@@ -409,13 +541,14 @@ void startRace(uint32_t now) {
         }
         race = new (mem) app::game::RaceGame();
     }
-    raceBestMs = prefs.isKey("race_best") ? prefs.getUInt("race_best", 0) : 0;
+    loadTable("hs_race", "race_best", raceTable);
     raceBestLapMs = prefs.isKey("race_lap") ? prefs.getUInt("race_lap", 0) : 0;
     race->reset();
     raceSeenLaps = 0;
-    raceScreen.enter(*race, raceBestMs, raceBestLapMs);
+    raceScreen.enter(*race, raceTable.best(), raceBestLapMs);
     raceNextStepMs = now;
-    Serial.printf("SPIEL Boxenstopp gestartet (Bestzeit %lu ms)\n", static_cast<unsigned long>(raceBestMs));
+    board = Board::None;
+    Serial.printf("SPIEL Boxenstopp gestartet (Bestzeit %lu ms)\n", static_cast<unsigned long>(raceTable.best()));
 }
 
 void startGame(int index, uint32_t now) {
@@ -424,7 +557,11 @@ void startGame(int index, uint32_t now) {
     else startBreakout(now);
 }
 
-void gamePress() {
+void gamePress(uint32_t now) {
+    if (board != Board::None) {
+        boardPress(now);
+        return;
+    }
     if (activeGame == ActiveGame::Race) {
         if (race) race->press();
     } else {
@@ -435,17 +572,29 @@ void gamePress() {
 void endGame() {
     lv_obj_invalidate(lv_scr_act());  // Oberfläche komplett neu zeichnen
     lastShownSecond = -2;
+    // Beim Beenden nichts verlieren: laufende Eingabe übernehmen, sonst mit den letzten Buchstaben eintragen
+    if (board == Board::Entry) {
+        finishEntry();
+    } else if (board == Board::Pending) {
+        commitScore(lastInitials, boardValue);
+    } else if (board == Board::None && activeGame == ActiveGame::Breakout && game.score() > 0) {
+        commitScore(lastInitials, static_cast<uint32_t>(game.score()));  // mitten im Spiel beendet
+    }
+    board = Board::None;
     if (activeGame == ActiveGame::Race) {
         if (race) Serial.printf("SPIEL Boxenstopp beendet: Runde %d, %lu ms\n", race->lap(), static_cast<unsigned long>(race->raceMs()));
         return;
     }
-    saveHighscore();
     Serial.printf("SPIEL beendet: %d Punkte, Level %d\n", game.score(), game.level());
 }
 
 /** Ein Durchlauf im Rennspiel: Ring = Lenkrad (in der Box: Auswahl), Mitte antippen = Bremse. */
 void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
     if (!race) return;
+    if (board != Board::None) {
+        boardLoop(now, detents);
+        return;
+    }
     if (race->state() == app::game::RaceGame::State::Pit) race->pitSelect(static_cast<int>(detents));
     else race->steer(rawSteps);
     if (rawSteps != 0) idle.onInput(now);
@@ -466,7 +615,6 @@ void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
     }
     if (static_cast<int32_t>(now - raceNextStepMs) >= 0) raceNextStepMs = now + kRaceStepMs;  // nicht aufholen
     if (race->state() != app::game::RaceGame::State::Finished) idle.onInput(now);  // nicht dimmen beim Fahren
-    if (race->completedLaps() < raceSeenLaps) raceSeenLaps = 0;  // neues Rennen (Drücken im Ziel)
     if (race->completedLaps() > raceSeenLaps) {
         // Rundenrekord sofort sichern – nicht erst im Ziel
         raceSeenLaps = race->completedLaps();
@@ -478,21 +626,21 @@ void raceLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
         }
     }
     if (before != race->state() && race->state() == app::game::RaceGame::State::Finished) {
-        const uint32_t previous = raceBestMs;
-        if (raceBestMs == 0 || race->raceMs() < raceBestMs) {
-            raceBestMs = race->raceMs();
-            prefs.putUInt("race_best", raceBestMs);
-        }
-        Serial.printf("SPIEL Boxenstopp im Ziel: %lu ms (Bestzeit vorher %lu ms)\n",
-                      static_cast<unsigned long>(race->raceMs()), static_cast<unsigned long>(previous));
-        raceScreen.render(*race, previous, raceBestLapMs);  // „Neue Bestzeit!“ gegen die alte prüfen
+        Serial.printf("SPIEL Boxenstopp im Ziel: %lu ms (Bestzeit bisher %lu ms)\n",
+                      static_cast<unsigned long>(race->raceMs()), static_cast<unsigned long>(raceTable.best()));
+        raceScreen.render(*race, raceTable.best(), raceBestLapMs);  // „Neue Bestzeit!“ gegen die bisherige
+        boardBegin(now, race->raceMs());
         return;
     }
-    raceScreen.render(*race, raceBestMs, raceBestLapMs);
+    raceScreen.render(*race, raceTable.best(), raceBestLapMs);
 }
 
 /** Ein Durchlauf im Spiel: Eingaben, Spielschritte im 60-Hz-Takt, Anzeige. */
-void gameLoop(uint32_t now, int32_t rawSteps) {
+void gameLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
+    if (board != Board::None) {
+        boardLoop(now, detents);
+        return;
+    }
     if (rawSteps != 0) {
         game.movePaddle(rawSteps * kGameDegPerStep);
         gameLastRingMs = now;
@@ -518,18 +666,17 @@ void gameLoop(uint32_t now, int32_t rawSteps) {
     if (static_cast<int32_t>(now - gameNextStepMs) >= 0) gameNextStepMs = now + kGameStepMs;  // nicht aufholen
     if (game.state() == app::game::RingBreakout::State::Playing) idle.onInput(now);  // nicht dimmen beim Spielen
     if (before == app::game::RingBreakout::State::Playing && game.state() == app::game::RingBreakout::State::Serving) {
-        saveHighscore();  // Ball verloren: Rekord schon jetzt sichern (falls das Gerät ausgeht)
+        saveProvisional();  // Ball verloren: Punkte schon jetzt sichern (falls das Gerät ausgeht)
     }
     if (before != game.state() && game.state() == app::game::RingBreakout::State::GameOver) {
-        const int previous = gameHighscore;
-        saveHighscore();
-        gameScreen.render(game, previous);  // „Neuer Rekord!“ gegen den alten Rekord prüfen
+        gameScreen.render(game, gameHighscore);  // „Neuer Rekord!“ gegen den bisherigen Rekord
+        boardBegin(now, static_cast<uint32_t>(game.score()));
         return;
     }
     gameScreen.render(game, gameHighscore);
 }
 
-/** Führt aus, was der ModeController entschieden hat. *//** Führt aus, was der ModeController entschieden hat. */
+/** Führt aus, was der ModeController entschieden hat. */
 void apply(const app::ModeController::Action& a, uint32_t now) {
     using T = app::ModeController::Action::Type;
     switch (a.type) {
@@ -612,7 +759,7 @@ void apply(const app::ModeController::Action& a, uint32_t now) {
             startGame(a.value, now);
             break;
         case T::GameButton:
-            gamePress();
+            gamePress(now);
             break;
         case T::GameEnded:
             endGame();
@@ -749,7 +896,7 @@ void loop() {
     if (modes.mode() == app::ModeController::Mode::Game) {
         // Das Spiel zeichnet selbst (am LVGL vorbei) – LVGL pausiert so lange
         if (activeGame == ActiveGame::Race) raceLoop(now, raw, d);
-        else gameLoop(now, raw);
+        else gameLoop(now, raw, d);
         if (idle.tick(now, true)) hal::Display::setBacklight(idle.level());
         diag::logStatusPeriodically(millis(), now);
         delay(2);

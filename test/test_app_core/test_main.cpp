@@ -10,6 +10,7 @@
 #include "IdleController.h"
 #include "RingBreakout.h"
 #include "RaceGame.h"
+#include "Highscores.h"
 #include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
@@ -1123,6 +1124,97 @@ void test_race_opponents_do_not_overlap() {
     }
 }
 
+// --- Bestenliste ------------------------------------------------------------------
+
+using app::game::HighscoreTable;
+using app::game::InitialsEntry;
+
+void test_highscores_points_sorted_and_capped() {
+    HighscoreTable t(false);
+    TEST_ASSERT_EQUAL(0, t.insert("AAA", 100));
+    TEST_ASSERT_EQUAL(0, t.insert("BBB", 300));
+    TEST_ASSERT_EQUAL(1, t.insert("CCC", 200));
+    TEST_ASSERT_EQUAL(2, t.insert("DDD", 200));  // Gleichstand: der ältere bleibt vorn
+    TEST_ASSERT_EQUAL(4, t.insert("EEE", 50));
+    TEST_ASSERT_EQUAL(5, t.count());
+    TEST_ASSERT_EQUAL_STRING("BBB", t.entry(0).name);
+    TEST_ASSERT_EQUAL_STRING("CCC", t.entry(1).name);
+    TEST_ASSERT_EQUAL_STRING("DDD", t.entry(2).name);
+    TEST_ASSERT_FALSE(t.qualifies(50));             // voll: muss besser als der letzte sein
+    TEST_ASSERT_FALSE(t.qualifies(0));
+    TEST_ASSERT_EQUAL(-1, t.insert("XXX", 10));
+    TEST_ASSERT_EQUAL(0, t.insert("TOP", 999));
+    TEST_ASSERT_EQUAL(5, t.count());
+    TEST_ASSERT_EQUAL_STRING("AAA", t.entry(4).name);  // EEE ist herausgefallen
+    TEST_ASSERT_EQUAL_UINT32(999, t.best());
+}
+
+void test_highscores_times_lower_is_better() {
+    HighscoreTable t(true);
+    t.insert("SLO", 90000);
+    TEST_ASSERT_EQUAL(0, t.insert("FST", 80000));
+    TEST_ASSERT_EQUAL(2, t.rankFor(95000));
+    TEST_ASSERT_EQUAL_UINT32(80000, t.best());
+}
+
+void test_highscores_name_padding() {
+    HighscoreTable t(false);
+    t.insert("AB", 5);
+    t.insert("ABCDEF", 4);
+    t.insert(nullptr, 3);
+    TEST_ASSERT_EQUAL_STRING("AB-", t.entry(0).name);
+    TEST_ASSERT_EQUAL_STRING("ABC", t.entry(1).name);
+    TEST_ASSERT_EQUAL_STRING("---", t.entry(2).name);
+}
+
+void test_highscores_save_and_load() {
+    HighscoreTable a(true);
+    a.insert("MAX", 61000);
+    a.insert("EVA", 59000);
+    uint8_t buf[64];
+    TEST_ASSERT_TRUE(HighscoreTable::size() <= sizeof(buf));
+    memcpy(buf, a.data(), HighscoreTable::size());
+    HighscoreTable b(true);
+    TEST_ASSERT_TRUE(b.load(buf, HighscoreTable::size()));
+    TEST_ASSERT_EQUAL(2, b.count());
+    TEST_ASSERT_EQUAL_STRING("EVA", b.entry(0).name);
+    // falsche Art (Punkte statt Zeiten), falsche Größe → leer
+    HighscoreTable c(false);
+    TEST_ASSERT_FALSE(c.load(buf, HighscoreTable::size()));
+    TEST_ASSERT_EQUAL(0, c.count());
+    TEST_ASSERT_FALSE(b.load(buf, 3));
+    TEST_ASSERT_EQUAL(0, b.count());
+    TEST_ASSERT_TRUE(b.lowerIsBetter());
+}
+
+void test_initials_entry() {
+    InitialsEntry e;
+    e.start("MAX");
+    TEST_ASSERT_EQUAL('M', e.letter(0));
+    e.rotate(1);
+    TEST_ASSERT_EQUAL('N', e.letter(0));
+    e.press();
+    e.rotate(-1);  // A rückwärts → letztes Zeichen „-“
+    TEST_ASSERT_EQUAL('-', e.letter(1));
+    e.press();
+    e.rotate(-25);  // X rückwärts über A hinaus → „9“
+    TEST_ASSERT_EQUAL('9', e.letter(2));
+    TEST_ASSERT_FALSE(e.done());
+    e.press();
+    TEST_ASSERT_TRUE(e.done());
+    e.rotate(3);  // nach dem Ende ohne Wirkung
+    char name[4];
+    e.name(name);
+    TEST_ASSERT_EQUAL('N', name[0]);
+    TEST_ASSERT_EQUAL('-', name[1]);
+    TEST_ASSERT_EQUAL('9', name[2]);
+    e.start(nullptr);
+    TEST_ASSERT_EQUAL('A', e.letter(2));
+    e.start("x?");
+    TEST_ASSERT_EQUAL('X', e.letter(0));
+    TEST_ASSERT_EQUAL('A', e.letter(1));
+}
+
 // --- ImageOps (Albumcover) --------------------------------------------------------
 
 namespace img = app::img;
@@ -1410,6 +1502,11 @@ int main(int, char**) {
     RUN_TEST(test_race_opponent_dodges_slow_player);
     RUN_TEST(test_race_side_contact_pushes_apart);
     RUN_TEST(test_race_opponents_do_not_overlap);
+    RUN_TEST(test_highscores_points_sorted_and_capped);
+    RUN_TEST(test_highscores_times_lower_is_better);
+    RUN_TEST(test_highscores_name_padding);
+    RUN_TEST(test_highscores_save_and_load);
+    RUN_TEST(test_initials_entry);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

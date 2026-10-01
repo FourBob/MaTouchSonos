@@ -431,11 +431,22 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Kurz drücken: Ball fliegt; prallt an Steinen, Mitte und Schläger richtig ab
 - [ ] Antippen am Rand: Schläger springt dorthin
 - [ ] Läuft flüssig (kein Ruckeln, kein Flackern des Schlägers); Log `loop_max_ms` im Spiel
-- [ ] Ball verloren → Leben weniger; nach dem dritten „GAME OVER“, kurz drücken = neues Spiel
+- [ ] Ball verloren → Leben weniger; nach dem dritten „GAME OVER“, danach Bestenliste (siehe unten)
 - [ ] Alle Steine weg → „LEVEL 2“, schneller
 - [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig (Cover, Titel, Ring)
 - [ ] Rekord bleibt nach Neustart erhalten (Log `SPIEL … Rekord`), auch wenn das Gerät mitten im Spiel
       ausgeht (gesichert bei jedem verlorenen Ball)
+
+## Checkliste Bestenliste (beide Spiele)
+
+- [ ] Nach „Game Over“/„Ziel“ bleibt das Ergebnis ~2 s stehen, Drücken überspringt
+- [ ] Ergebnis reicht für die Top 5 → „NEUER REKORD!“ bzw. „BESTENLISTE!“, Platz, drei große Buchstaben
+- [ ] Ring wechselt den gelb markierten Buchstaben (A–Z, 0–9, -), Drücken geht zum nächsten
+- [ ] Nach dem dritten: Liste, eigener Eintrag gelb; Drücken = nochmal, lang = Ende
+- [ ] Beim nächsten Mal sind die letzten Buchstaben vorbelegt
+- [ ] Ergebnis reicht nicht → gleich die Liste, unten „DU: …“
+- [ ] Liste bleibt nach Neustart erhalten; ein alter Rekord von vorher steht als „---“ drin
+- [ ] Lang drücken während der Eingabe → mit den bisherigen Buchstaben eingetragen
 
 ## Checkliste Easteregg „Boxenstopp“
 
@@ -452,7 +463,7 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] In der Box: Ring wählt reihum (vorne links, vorne rechts, LOS, hinten rechts, hinten links, Tank);
       Reifen wechseln („WECHSEL %“), Tanken an/aus („TANKEN %“), LOS → weiter auf der Strecke
 - [ ] Ohne Boxenstopp: „TANK LEER“ bzw. „PLATTEN“, das Auto wird langsam
-- [ ] Nach 5 Runden „ZIEL!“ mit Zeit und Bestzeit; kurz drücken = neues Rennen
+- [ ] Nach 5 Runden „ZIEL!“ mit Zeit und Bestzeit, danach Bestenliste (siehe oben)
 - [ ] Flüssig? (Log `loop_max_ms` im Spiel), Lenkgefühl ok? (sonst `kSteerPerStep` in `RaceGame.h`)
 - [ ] Lang drücken → zurück zu Now Playing, Oberfläche vollständig; Bestzeit bleibt nach Neustart
 - [ ] Rundenrekord: nach einer Runde Log `SPIEL Boxenstopp neue beste Runde`; Gerät mitten im Rennen
