@@ -63,10 +63,12 @@ ohne Stützen, innen darf es etwas rau sein.
 - **`dom_tiefe`:** Abstand vom Becherrand bis zur Oberkante der drei leeren Gehäuse-Dome (in den
   Aussparungen der Platine; Standard 5,0 mm). Mit dem Tiefenmaß der Schieblehre an allen drei Domen
   messen. Die Säulen müssen aufliegen; wenn du unsicher bist, lieber 0,2 mm mehr eintragen.
-- **`becher_innen_d`:** Innendurchmesser des Bechers am Rand (Standard 46 mm). Die Säulen werden zur Wand
-  hin abgeflacht, damit sie nicht anstoßen.
-- **Loch in den Domen:** Durchmesser und Tiefe. Bei ~1,6–1,8 mm passt eine selbstschneidende M2-Schraube.
-  `einschraub` (Standard 4) = so tief soll die Schraube in den Dom greifen, höchstens die Lochtiefe.
+- **Becher innen:** ganz am Rand Ø 48 mm auf 1,2 mm Tiefe (`becher_rand_d`, `becher_rand_t`, gemessen),
+  darunter enger (`becher_innen_d`, aus dem Foto ~46 mm). Die Säulen werden zur Wand hin abgeflacht,
+  damit sie nicht anstoßen.
+- **Loch in den Domen:** Ø 1,8 mm (gemessen), passt für selbstschneidende M2-Schrauben. Die Tiefe mit einem
+  Zahnstocher messen: bis zum Grund einstecken, an der Domoberkante markieren, Stück nachmessen.
+  `einschraub` (Standard 4) = so tief soll die Schraube in den Dom greifen, höchstens Lochtiefe − 0,5.
   Das Modell rechnet mit `schraube_l` und bricht ab, wenn der Schraubenkopf nicht im vollen Material läge.
 
 **Lage der Dome prüfen:** Die Lage (`dome`) ist aus dem Foto der Rückseite ausgemessen, also nur auf etwa
@@ -104,7 +106,8 @@ und `dome` anpassen (Radius in mm, Winkel in Grad, Blick von vorn, Buchse bei 90
 | `spiel`, `rippe` | 0.35, 0.5 | Passung der Aufnahme (siehe Passtest) |
 | `usb_abstand` | 17.9 | Lage der USB-C-Buchse neben der Körpermitte (aus der Platinendatei von Makerfabs) |
 | `dom_tiefe` | 5.0 | Becherrand → Oberkante der Gehäuse-Dome. **Messen!** |
-| `becher_innen_d` | 46 | Innen-Ø des Bechers am Rand. **Messen!** |
+| `becher_rand_d`, `becher_rand_t` | 48, 1.2 | Innen-Ø und Tiefe des Randes ganz oben im Becher (gemessen) |
+| `becher_innen_d` | 46 | Innen-Ø darunter, an den Domen (aus dem Foto) |
 | `schraube_l`, `einschraub` | 16, 4 | Schraubenlänge und wie tief sie in den Dom greift |
 | `dome` | – | Lage der drei Gehäuse-Dome (aus dem Foto, mit `schablone.stl` prüfen) |
 | `fuss_d` | 92 | Durchmesser der Standfläche |

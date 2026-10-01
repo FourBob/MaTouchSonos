@@ -33,7 +33,10 @@ usb_abstand = 17.9;   // USB-C-Buchse: Abstand zur Körpermitte
 
 /* [Befestigung (Gehäuse-Dome)] */
 dom_tiefe = 5.0;      // Becherrand → Oberkante der drei Gehäuse-Dome. BITTE MESSEN
-becher_innen_d = 46;  // Innen-Ø des Bechers am Rand (die Dome sitzen an der Wand). BITTE MESSEN
+becher_rand_d = 48;   // Innen-Ø des Bechers ganz am Rand (gemessen)
+becher_rand_t = 1.2;  // so tief reicht dieser Rand, darunter wird der Becher enger (gemessen)
+becher_innen_d = 46;  // Innen-Ø darunter, wo die Dome an der Wand sitzen (aus dem Foto geschätzt)
+dom_loch = 1.8;       // Loch im Dom (gemessen) – passt für selbstschneidende M2-Schrauben
 schraube_l = 16;      // Länge der M2-Schrauben (Gewinde, ohne Kopf)
 einschraub = 4;       // so tief greift die Schraube in den Dom
 saeule_d = 4.0;       // Säule auf dem Dom (muss durch die Aussparung der Platine passen)
@@ -159,6 +162,7 @@ module saeulen() {
             cylinder(d = saeule_d, h = z_dom - (z_hinten - boden) + 0.01);
         union() {
             translate([0, 0, z_hinten - boden - 1]) cylinder(d = bohrung_d, h = boden + 1);
+            translate([0, 0, z_hinten - 0.01]) cylinder(d = becher_rand_d - 0.6, h = becher_rand_t + 0.01);
             translate([0, 0, z_hinten - 0.01]) cylinder(d = becher_innen_d - 0.6, h = dom_tiefe + 1);
         }
     }
