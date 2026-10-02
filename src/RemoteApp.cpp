@@ -47,6 +47,10 @@
 #include "AsteroidsScreen.h"
 #include "TubeGame.h"
 #include "TubeScreen.h"
+#include "PongGame.h"
+#include "PongScreen.h"
+#include "MissileGame.h"
+#include "MissileScreen.h"
 #include "ProgressTracker.h"
 #include "RingBreakout.h"
 #include "SonosLink.h"
@@ -122,6 +126,8 @@ app::game::HighscoreTable ringTable(false);
 app::game::HighscoreTable raceTable(true);
 app::game::HighscoreTable astTable(false);
 app::game::HighscoreTable tubeTable(false);
+app::game::HighscoreTable pongTable(false);
+app::game::HighscoreTable missileTable(false);
 app::game::InitialsEntry initials;
 char lastInitials[4] = "AAA";
 ScoreScreen scoreScreen;
@@ -136,13 +142,23 @@ app::game::TubeGame tube;
 TubeScreen tubeScreen;
 uint32_t vectorNextStepMs = 0;
 bool vectorWasTouched = false;
+uint32_t vectorLastRingMs = 0;                 // Ringpong: Antippen zählt erst kurz nach dem Drehen
+constexpr float kPongDegPerStep = 4.5f;
+constexpr float kAimDegPerStep = 4.5f;         // Raketenabwehr: Fadenkreuz je Rohschritt
+app::game::PongGame pong;
+PongScreen pongScreen;
+app::game::MissileGame missiles;
+MissileScreen missileScreen;
 
-enum class ActiveGame : uint8_t { Breakout, Race, Asteroids, Tube };
-constexpr int kGameCount = 4;
-const char* const kGameNames[kGameCount] = {"Ringbrecher", "Boxenstopp", "Asteroiden", "Röhrensturm"};
+enum class ActiveGame : uint8_t { Breakout, Race, Asteroids, Tube, Pong, Missile };
+constexpr int kGameCount = 6;
+const char* const kGameNames[kGameCount] = {"Ringbrecher", "Boxenstopp",  "Asteroiden",
+                                            "Röhrensturm", "Ringpong",    "Raketenabwehr"};
 const char* const kGameDetails[kGameCount] = {"Ring dreht den Schläger", "Ring lenkt, Mitte bremst",
                                               "Ring dreht, Drücken schießt, Berühren = Schub",
-                                              "Ring wechselt die Bahn, Mitte = Superzapper"};
+                                              "Ring wechselt die Bahn, Mitte = Superzapper",
+                                              "Du gegen den Computer, 7 Punkte gewinnen",
+                                              "Antippen = Abwehrrakete, schütze die Städte"};
 ActiveGame activeGame = ActiveGame::Breakout;
 
 net::FavoritesInfo* favorites = nullptr;  // PSRAM (~10 KB), in setup() angelegt
@@ -445,6 +461,8 @@ app::game::HighscoreTable& activeTable() {
         case ActiveGame::Race: return raceTable;
         case ActiveGame::Asteroids: return astTable;
         case ActiveGame::Tube: return tubeTable;
+        case ActiveGame::Pong: return pongTable;
+        case ActiveGame::Missile: return missileTable;
         case ActiveGame::Breakout: break;
     }
     return ringTable;
@@ -454,6 +472,8 @@ const char* activeTableKey() {
         case ActiveGame::Race: return "hs_race";
         case ActiveGame::Asteroids: return "hs_ast";
         case ActiveGame::Tube: return "hs_tube";
+        case ActiveGame::Pong: return "hs_pong";
+        case ActiveGame::Missile: return "hs_mis";
         case ActiveGame::Breakout: break;
     }
     return "hs_ring";
@@ -463,6 +483,8 @@ const char* activeTitle() {
         case ActiveGame::Race: return "BOXENSTOPP";
         case ActiveGame::Asteroids: return "ASTEROIDEN";
         case ActiveGame::Tube: return "ROEHRENSTURM";
+        case ActiveGame::Pong: return "RINGPONG";
+        case ActiveGame::Missile: return "RAKETENABWEHR";
         case ActiveGame::Breakout: break;
     }
     return "RINGBRECHER";
@@ -610,12 +632,32 @@ void startTube(uint32_t now) {
     Serial.printf("SPIEL Röhrensturm gestartet (Rekord %lu)\n", static_cast<unsigned long>(tubeTable.best()));
 }
 
+void startPong(uint32_t now) {
+    loadTable("hs_pong", "", pongTable);
+    pong.reset();
+    pongScreen.enter(pong, pongTable.best());
+    vectorNextStepMs = now;
+    board = Board::None;
+    Serial.printf("SPIEL Ringpong gestartet (Rekord %lu)\n", static_cast<unsigned long>(pongTable.best()));
+}
+
+void startMissile(uint32_t now) {
+    loadTable("hs_mis", "", missileTable);
+    missiles.reset();
+    missileScreen.enter(missiles, missileTable.best());
+    vectorNextStepMs = now;
+    board = Board::None;
+    Serial.printf("SPIEL Raketenabwehr gestartet (Rekord %lu)\n", static_cast<unsigned long>(missileTable.best()));
+}
+
 void startGame(int index, uint32_t now) {
     activeGame = index >= 0 && index < kGameCount ? static_cast<ActiveGame>(index) : ActiveGame::Breakout;
     switch (activeGame) {
         case ActiveGame::Race: startRace(now); break;
         case ActiveGame::Asteroids: startAsteroids(now); break;
         case ActiveGame::Tube: startTube(now); break;
+        case ActiveGame::Pong: startPong(now); break;
+        case ActiveGame::Missile: startMissile(now); break;
         case ActiveGame::Breakout: startBreakout(now); break;
     }
 }
@@ -626,6 +668,8 @@ uint32_t runningScore() {
         case ActiveGame::Breakout: return static_cast<uint32_t>(game.score());
         case ActiveGame::Asteroids: return asteroids.state() == app::game::AsteroidsGame::State::Playing ? asteroids.score() : 0;
         case ActiveGame::Tube: return tube.state() != app::game::TubeGame::State::Ready ? tube.score() : 0;
+        case ActiveGame::Pong: return pong.state() != app::game::PongGame::State::Ready ? pong.score() : 0;
+        case ActiveGame::Missile: return missiles.state() != app::game::MissileGame::State::Ready ? missiles.score() : 0;
         case ActiveGame::Race: break;
     }
     return 0;
@@ -642,6 +686,8 @@ void gamePress(uint32_t now) {
             break;
         case ActiveGame::Asteroids: asteroids.press(); break;  // nur Start; geschossen wird beim Drücken
         case ActiveGame::Tube: tube.press(); break;            // nur Start; Feuer solange gedrückt
+        case ActiveGame::Pong: pong.press(); break;
+        case ActiveGame::Missile: missiles.press(); break;     // nur Start; geschossen wird beim Drücken
         case ActiveGame::Breakout: game.press(); break;
     }
 }
@@ -664,6 +710,12 @@ void endGame() {
             break;
         case ActiveGame::Asteroids:
             Serial.printf("SPIEL Asteroiden beendet: %lu Punkte, Welle %d\n", static_cast<unsigned long>(asteroids.score()), asteroids.wave());
+            break;
+        case ActiveGame::Pong:
+            Serial.printf("SPIEL Ringpong beendet: %lu Punkte, Level %d\n", static_cast<unsigned long>(pong.score()), pong.level());
+            break;
+        case ActiveGame::Missile:
+            Serial.printf("SPIEL Raketenabwehr beendet: %lu Punkte, Welle %d\n", static_cast<unsigned long>(missiles.score()), missiles.wave());
             break;
         case ActiveGame::Tube:
             Serial.printf("SPIEL Röhrensturm beendet: %lu Punkte, Level %d\n", static_cast<unsigned long>(tube.score()), tube.level());
@@ -785,6 +837,61 @@ void tubeLoop(uint32_t now, int32_t rawSteps, int32_t detents, bool buttonHeld) 
     if (tube.lives() < livesBefore && tube.state() != S::GameOver) saveProvisional(tube.score());
     tubeScreen.render(tube, tubeTable.best());
     if (before != tube.state() && tube.state() == S::GameOver) boardBegin(now, tube.score());
+}
+
+/** Ringpong: Ring = Schläger, Antippen am Rand = Schläger dorthin (nicht während gedreht wird). */
+void pongLoop(uint32_t now, int32_t rawSteps, int32_t detents) {
+    if (board != Board::None) {
+        boardLoop(now, detents);
+        return;
+    }
+    using S = app::game::PongGame::State;
+    if (rawSteps != 0) {
+        pong.movePaddle(rawSteps * kPongDegPerStep);
+        vectorLastRingMs = now;
+        idle.onInput(now);
+    }
+    int16_t tx, ty;
+    const bool touched = hal::Touch::read(tx, ty);
+    if (touched && !vectorWasTouched && now - vectorLastRingMs > kGameTouchAfterRingMs) {
+        const float dx = tx - 240.0f, dy = ty - 240.0f;
+        if (dx * dx + dy * dy > 80.0f * 80.0f) pong.setPaddle(atan2f(dy, dx) * 57.29578f);
+    }
+    if (touched) idle.onInput(now);
+    vectorWasTouched = touched;
+    const int cpuBefore = pong.cpuPoints();
+    const auto before = pong.state();
+    vectorSteps(now, [] { pong.step(kVectorStepMs / 1000.0f); });
+    if (pong.state() != S::Ready && pong.state() != S::GameOver) idle.onInput(now);
+    if (pong.cpuPoints() > cpuBefore && pong.state() != S::GameOver) saveProvisional(pong.score());
+    pongScreen.render(pong, pongTable.best());
+    if (before != pong.state() && pong.state() == S::GameOver) boardBegin(now, pong.score());
+}
+
+/** Raketenabwehr: Antippen = Abwehrrakete dorthin; Ring dreht das Fadenkreuz, Drücken feuert. */
+void missileLoop(uint32_t now, int32_t rawSteps, int32_t detents, bool pressEdge) {
+    if (board != Board::None) {
+        boardLoop(now, detents);
+        return;
+    }
+    using S = app::game::MissileGame::State;
+    if (rawSteps != 0) {
+        missiles.rotateAim(rawSteps * kAimDegPerStep);
+        idle.onInput(now);
+    }
+    if (pressEdge) missiles.fireAtAim();
+    int16_t tx, ty;
+    const bool touched = hal::Touch::read(tx, ty);
+    if (touched && !vectorWasTouched) missiles.fireAt(tx - 240.0f, ty - 240.0f);
+    if (touched) idle.onInput(now);
+    vectorWasTouched = touched;
+    const int citiesBefore = missiles.citiesLeft();
+    const auto before = missiles.state();
+    vectorSteps(now, [] { missiles.step(kVectorStepMs / 1000.0f); });
+    if (missiles.state() != S::Ready && missiles.state() != S::GameOver) idle.onInput(now);
+    if (missiles.citiesLeft() < citiesBefore) saveProvisional(missiles.score());
+    missileScreen.render(missiles, missileTable.best());
+    if (before != missiles.state() && missiles.state() == S::GameOver) boardBegin(now, missiles.score());
 }
 
 /** Ein Durchlauf im Spiel: Eingaben, Spielschritte im 60-Hz-Takt, Anzeige. */
@@ -1052,6 +1159,8 @@ void loop() {
             case ActiveGame::Race: raceLoop(now, raw, d); break;
             case ActiveGame::Asteroids: asteroidsLoop(now, raw, d, buttonPressEdge); break;
             case ActiveGame::Tube: tubeLoop(now, raw, d, buttonRaw); break;
+            case ActiveGame::Pong: pongLoop(now, raw, d); break;
+            case ActiveGame::Missile: missileLoop(now, raw, d, buttonPressEdge); break;
             case ActiveGame::Breakout: gameLoop(now, raw, d); break;
         }
         if (idle.tick(now, true)) hal::Display::setBacklight(idle.level());

@@ -13,6 +13,8 @@
 #include "Highscores.h"
 #include "AsteroidsGame.h"
 #include "TubeGame.h"
+#include "PongGame.h"
+#include "MissileGame.h"
 #include "ImageOps.h"
 #include "ModeController.h"
 #include "PlaybackController.h"
@@ -1440,6 +1442,194 @@ void test_tube_full_level_spawns_and_plays() {
     TEST_ASSERT_TRUE(g.state() == Tube::State::GameOver);
 }
 
+// --- Ringpong -------------------------------------------------------------------------
+
+using Pong = app::game::PongGame;
+static void pongSteps(Pong& g, int n) { for (int i = 0; i < n; ++i) g.step(1.0f / 60); }
+
+void test_pong_paddle_limits() {
+    static Pong g;
+    g.reset();
+    g.setPaddle(90);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 90, g.playerAngle());
+    g.movePaddle(200);  // über den linken Anschlag
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, Pong::kPlayerMax, g.playerAngle());
+    g.setPaddle(300);   // oben rechts angetippt
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, Pong::kPlayerMin, g.playerAngle());
+    g.setPaddle(200);   // oben links
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, Pong::kPlayerMax, g.playerAngle());
+}
+
+void test_pong_serve_and_bounce_off_player() {
+    static Pong g;
+    g.reset();
+    g.press();
+    TEST_ASSERT_TRUE(g.state() == Pong::State::Serve);
+    pongSteps(g, 61);
+    TEST_ASSERT_TRUE(g.state() == Pong::State::Playing);
+    // Ball gerade nach unten auf den Schläger
+    g.setPaddle(90);
+    g.setBall(0, 150, 0, 300);
+    pongSteps(g, 30);
+    TEST_ASSERT_TRUE(g.ballY() < 200);          // abgeprallt
+    TEST_ASSERT_EQUAL(1, g.rally());
+    TEST_ASSERT_EQUAL_UINT32(10, g.score());
+    TEST_ASSERT_TRUE(g.ballSpeed() > 300);      // schneller geworden
+}
+
+void test_pong_edge_hit_deflects() {
+    static Pong g;
+    g.reset();
+    g.press();
+    g.setPaddle(90);
+    // Ball trifft die rechte Kante (Winkel < 90°, Richtung kleinerer Winkel = rechts)
+    const float a = (90 - 12) * 0.017453292f;
+    g.setBall(cosf(a) * 150, sinf(a) * 150, cosf(a) * 300, sinf(a) * 300);
+    pongSteps(g, 20);
+    TEST_ASSERT_EQUAL(1, g.rally());
+    TEST_ASSERT_TRUE(g.ballY() < 200);
+}
+
+void test_pong_miss_gives_cpu_point_and_serve() {
+    static Pong g;
+    g.reset();
+    g.press();
+    g.setPaddle(20);
+    g.setBall(0, 150, 0, 300);   // nach unten, Schläger weit weg
+    pongSteps(g, 40);
+    TEST_ASSERT_TRUE(g.state() == Pong::State::Point);
+    TEST_ASSERT_EQUAL(1, g.cpuPoints());
+    TEST_ASSERT_FALSE(g.lastPointPlayer());
+    pongSteps(g, 60);
+    TEST_ASSERT_TRUE(g.state() == Pong::State::Serve);
+}
+
+void test_pong_cpu_returns_ball_and_player_scores() {
+    static Pong g;
+    g.reset();
+    g.press();
+    g.setCpuAngle(270);
+    g.setBall(0, -100, 0, -250);  // gerade nach oben: Computer steht richtig
+    pongSteps(g, 40);
+    TEST_ASSERT_EQUAL(1, g.rally());
+    // Ball am Computer vorbei (ganz rechts oben, Schläger links)
+    g.setCpuAngle(200);
+    const float a = 330 * 0.017453292f;
+    g.setBall(cosf(a) * 100, sinf(a) * 100, cosf(a) * 400, sinf(a) * 400);
+    pongSteps(g, 30);
+    TEST_ASSERT_EQUAL(1, g.playerPoints());
+    TEST_ASSERT_TRUE(g.lastPointPlayer());
+}
+
+void test_pong_match_win_next_level_and_game_over() {
+    static Pong g;
+    g.reset();
+    g.press();
+    g.setPoints(6, 0);
+    g.setCpuAngle(200);
+    const float a = 330 * 0.017453292f;
+    g.setBall(cosf(a) * 100, sinf(a) * 100, cosf(a) * 400, sinf(a) * 400);
+    pongSteps(g, 30);
+    pongSteps(g, 60);
+    TEST_ASSERT_TRUE(g.state() == Pong::State::MatchWon);
+    TEST_ASSERT_TRUE(g.score() >= 1100);
+    pongSteps(g, 60 * 3);
+    TEST_ASSERT_EQUAL(2, g.level());
+    TEST_ASSERT_EQUAL(0, g.playerPoints());
+    g.setPoints(0, 6);
+    g.setPaddle(20);
+    g.setBall(0, 150, 0, 300);
+    pongSteps(g, 100);
+    TEST_ASSERT_TRUE(g.state() == Pong::State::GameOver);
+}
+
+void test_pong_unattended_game_ends() {
+    // ohne Eingabe: der Spieler verliert irgendwann das Match (kein Hänger)
+    static Pong g;
+    g.reset();
+    g.press();
+    for (int n = 0; n < 60 * 300 && g.state() != Pong::State::GameOver; ++n) g.step(1.0f / 60);
+    TEST_ASSERT_TRUE(g.state() == Pong::State::GameOver);
+    TEST_ASSERT_EQUAL(Pong::kWinPoints, g.cpuPoints());
+}
+
+// --- Raketenabwehr -----------------------------------------------------------------
+
+using Mis = app::game::MissileGame;
+static void misSteps(Mis& g, int n) { for (int i = 0; i < n; ++i) g.step(1.0f / 60); }
+
+void test_missile_fire_explodes_and_kills() {
+    static Mis g;
+    g.reset();
+    g.press();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.placeEnemy(0, 0, -200, 0, 0.001f);  // steht fast still bei (0, −200)
+    TEST_ASSERT_TRUE(g.fireAt(0, -200));
+    TEST_ASSERT_EQUAL(Mis::kAmmoPerWave - 1, g.ammo());
+    misSteps(g, 60);
+    TEST_ASSERT_FALSE(g.enemy(0).alive);
+    TEST_ASSERT_EQUAL_UINT32(25, g.score());
+    TEST_ASSERT_FALSE(g.fireAt(5, 5));  // zu nah an der Mitte
+}
+
+void test_missile_city_destroyed() {
+    static Mis g;
+    g.reset();
+    g.press();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.placeEnemy(0, Mis::cityX(2) * 3, Mis::cityY(2) * 3, 2, 120);
+    misSteps(g, 120);
+    TEST_ASSERT_FALSE(g.city(2));
+    TEST_ASSERT_EQUAL(Mis::kCities - 1, g.citiesLeft());
+}
+
+void test_missile_base_hit_empties_ammo() {
+    static Mis g;
+    g.reset();
+    g.press();
+    g.clearEnemies();
+    g.setSpawnLeft(1);
+    g.placeEnemy(0, 0, 120, -1, 120);
+    misSteps(g, 90);
+    TEST_ASSERT_EQUAL(0, g.ammo());
+    TEST_ASSERT_FALSE(g.fireAt(0, -150));
+}
+
+void test_missile_wave_end_bonus_and_next_wave() {
+    static Mis g;
+    g.reset();
+    g.press();
+    g.clearEnemies();
+    misSteps(g, 2);
+    TEST_ASSERT_TRUE(g.state() == Mis::State::WaveEnd);
+    TEST_ASSERT_EQUAL_UINT32((Mis::kAmmoPerWave * 5 + Mis::kCities * 100) * 1, g.lastBonus());
+    misSteps(g, 60 * 4);
+    TEST_ASSERT_TRUE(g.state() == Mis::State::Playing);
+    TEST_ASSERT_EQUAL(2, g.wave());
+    TEST_ASSERT_EQUAL(Mis::kAmmoPerWave, g.ammo());
+}
+
+void test_missile_aim_with_ring() {
+    static Mis g;
+    g.reset();
+    g.press();
+    g.rotateAim(90);  // von oben (270°) auf rechts (0°)
+    TEST_ASSERT_TRUE(g.aimX() > 100);
+    TEST_ASSERT_FLOAT_WITHIN(1.0f, 0, g.aimY());
+    TEST_ASSERT_TRUE(g.fireAtAim());
+}
+
+void test_missile_unattended_game_over() {
+    static Mis g;
+    g.reset();
+    g.press();
+    for (int n = 0; n < 60 * 900 && g.state() != Mis::State::GameOver; ++n) g.step(1.0f / 60);
+    TEST_ASSERT_TRUE(g.state() == Mis::State::GameOver);
+    TEST_ASSERT_EQUAL(0, g.citiesLeft());
+}
+
 // --- ImageOps (Albumcover) --------------------------------------------------------
 
 namespace img = app::img;
@@ -1746,6 +1936,19 @@ int main(int, char**) {
     RUN_TEST(test_tube_shooting_shrinks_spike);
     RUN_TEST(test_tube_superzapper);
     RUN_TEST(test_tube_full_level_spawns_and_plays);
+    RUN_TEST(test_pong_paddle_limits);
+    RUN_TEST(test_pong_serve_and_bounce_off_player);
+    RUN_TEST(test_pong_edge_hit_deflects);
+    RUN_TEST(test_pong_miss_gives_cpu_point_and_serve);
+    RUN_TEST(test_pong_cpu_returns_ball_and_player_scores);
+    RUN_TEST(test_pong_match_win_next_level_and_game_over);
+    RUN_TEST(test_pong_unattended_game_ends);
+    RUN_TEST(test_missile_fire_explodes_and_kills);
+    RUN_TEST(test_missile_city_destroyed);
+    RUN_TEST(test_missile_base_hit_empties_ammo);
+    RUN_TEST(test_missile_wave_end_bonus_and_next_wave);
+    RUN_TEST(test_missile_aim_with_ring);
+    RUN_TEST(test_missile_unattended_game_over);
     RUN_TEST(test_img_detect_format);
     RUN_TEST(test_img_choose_jpeg_scale);
     RUN_TEST(test_img_cover_resize_uniform_color_stays);

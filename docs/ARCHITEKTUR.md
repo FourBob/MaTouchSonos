@@ -300,6 +300,24 @@ Zwei Automaten-Klassiker in Vektorgrafik, Einträge 3 und 4 der Spielauswahl.
   Perspektive der Röhre: jede Tiefe ist eine verkleinerte Kopie des Randes (Faktor 1/(1+6·Abstand)).
 - **Bestenliste:** `hs_ast`, `hs_tube`; bei jedem verlorenen Leben vorläufig gesichert.
 
+## Easteregg: „Ringpong“ und „Raketenabwehr“
+
+Einträge 5 und 6 der Spielauswahl, ebenfalls Vektorgrafik (gemeinsame Linienliste
+`VectorCanvas::shared()` – es läuft immer nur ein Spiel).
+
+- **Ringpong** (Pong im Kreis): Dein Schläger läuft auf der unteren Hälfte des Randes, der des
+  Computers oben. Raus durch die untere Hälfte = Punkt für den Computer, oben = für dich. Trefferpunkt
+  bestimmt den Abprallwinkel, jeder Treffer macht den Ball schneller. 7 Punkte gewinnen das Match →
+  nächstes Level (Computer schneller, genauer); verloren → Spielende. Ring = Schläger, Antippen am Rand
+  = Schläger dorthin. Punkte: 100 je Ballwechsel, 10 je Treffer, 1000 × Level je Match. Logik:
+  `app::game::PongGame` (der Computer berechnet, wo der Ball den Kreis verlässt, mit Zielfehler).
+- **Raketenabwehr** (nach *Missile Command*, rund gedacht): Planet mit sechs Städten und Basis in der
+  Mitte, feindliche Raketen kommen vom Rand. Antippen = Abwehrrakete genau dorthin (oder Ring dreht das
+  Fadenkreuz, Drücken feuert); die Explosionswolke vernichtet alles, was hineinfliegt (25 Punkte). Ab
+  Welle 3 teilen sich Raketen. 30 Abwehrraketen je Welle; Bonus für Munition und Städte, Bonusstadt alle
+  10 000. Basis getroffen = keine Munition mehr in dieser Welle. Logik: `app::game::MissileGame`.
+- **Bestenliste:** `hs_pong`, `hs_mis`.
+
 ## Bestenliste der Spiele
 
 Wie am Spielautomaten: Top 5 je Spiel mit drei Buchstaben. Nach „Game Over“ bzw. „Ziel“ bleibt das

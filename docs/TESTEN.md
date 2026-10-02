@@ -461,6 +461,24 @@ python3 tools/sonos_probe.py <IP des Koordinators> favorites try <Nr>   # probie
 - [ ] Level geschafft → Tauchfahrt durch die Röhre, dann „LEVEL 2“ und eine neue Form
 - [ ] Flüssig? (`loop_max_ms`); nach „GAME OVER“ die Bestenliste
 
+## Checkliste Easteregg „Ringpong“
+
+- [ ] Spielauswahl hat 6 Einträge; „Ringpong“ → Titel, Drücken startet
+- [ ] Ring bewegt deinen Schläger (unten) in Drehrichtung, bleibt an den Anschlägen stehen;
+      Antippen am Rand setzt ihn dorthin
+- [ ] Ball prallt ab, Kante = schräger; wird mit jedem Treffer schneller
+- [ ] Computer (oben) spielt mit, verpasst aber manchmal; Stand groß in der Mitte
+- [ ] 7 Punkte → „MATCH GEWONNEN!“, Level 2; 7 für den Computer → „GAME OVER“, Bestenliste
+
+## Checkliste Easteregg „Raketenabwehr“
+
+- [ ] Titel mit Anleitung; Planet mit 6 Städten in der Mitte
+- [ ] Antippen → blaue Abwehrrakete fliegt genau dorthin und explodiert (flackernder Kreis)
+- [ ] Ring dreht das gelbe Fadenkreuz, Drücken feuert dorthin
+- [ ] Rote Raketen in der Explosion verschwinden (+25); erreichen sie eine Stadt, ist sie zerstört
+- [ ] Ab Welle 3 teilen sich Raketen; unten Welle und Munition (rot unter 6)
+- [ ] Welle vorbei → „WELLE n GESCHAFFT“ und Bonus; alle Städte weg → „THE END“, Bestenliste
+
 ## Checkliste Bestenliste (alle Spiele)
 
 - [ ] Nach „Game Over“/„Ziel“ bleibt das Ergebnis ~2 s stehen, Drücken überspringt

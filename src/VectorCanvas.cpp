@@ -6,6 +6,11 @@
 
 #include "Display.h"
 
+VectorCanvas& VectorCanvas::shared() {
+    static VectorCanvas canvas;
+    return canvas;
+}
+
 void VectorCanvas::clear() {
     curCount_ = 0;
     prevCount_ = 0;

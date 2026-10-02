@@ -12,7 +12,10 @@
  */
 class VectorCanvas {
 public:
-    static constexpr int kMaxLines = 420;
+    static constexpr int kMaxLines = 480;
+
+    /** Gemeinsame Linienliste aller Vektorspiele (es läuft immer nur eines; spart Speicher). */
+    static VectorCanvas& shared();
 
     /** Alles vergessen (nach fillScreen o. Ä.): das nächste Bild zeichnet nur neu, löscht nichts. */
     void clear();

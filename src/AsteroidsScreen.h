@@ -17,7 +17,7 @@ public:
 private:
     void drawText(const app::game::AsteroidsGame& game, uint32_t best, bool force);
 
-    VectorCanvas canvas_;
+    VectorCanvas& canvas_ = VectorCanvas::shared();
     uint32_t frame_ = 0;
     int state_ = -1;
 };

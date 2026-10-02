@@ -31,7 +31,7 @@ private:
     void drawLives(const app::game::TubeGame& game);
     void drawReady(uint32_t best);
 
-    VectorCanvas canvas_;
+    VectorCanvas& canvas_ = VectorCanvas::shared();
     float rimX_[app::game::TubeGame::kLanes + 1] = {};
     float rimY_[app::game::TubeGame::kLanes + 1] = {};
     int shape_ = -1;
