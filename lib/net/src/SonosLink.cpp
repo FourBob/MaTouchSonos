@@ -35,7 +35,8 @@ constexpr uint32_t kEventPollDelayMs = 150;      // Events kommen oft in Schübe
 constexpr uint32_t kEventMinPollGapMs = 400;     // höchstens so oft wegen Events abfragen
 constexpr uint32_t kTopologyEventDelayMs = 500;
 constexpr int kSubscribeTimeoutS = 1800;         // Abo-Dauer; erneuert nach der Hälfte
-constexpr uint32_t kSubscribeRetryMs = 60000;    // Abo fehlgeschlagen: später erneut
+// Abo fehlgeschlagen: bald erneut, dann immer seltener (z. B. Aussetzer direkt nach dem WLAN-Start)
+constexpr uint32_t kSubscribeRetryMs[] = {2000, 5000, 15000, 60000};
 constexpr uint32_t kNotifyReadTimeoutMs = 500;
 constexpr size_t kNotifyMaxBytes = 64 * 1024;    // längere Events nur bis hier lesen (Rest verwerfen)
 constexpr uint32_t kPollAfterCommandMs = 400;    // nach einem Befehl schnell bestätigen
@@ -242,12 +243,13 @@ struct Link {
         const sonos::gena::EventService* service = nullptr;
         std::string sid;
         uint32_t renewAt = 0;
+        uint32_t retryAt = 0;       // nächster Versuch nach einem Fehlschlag
+        uint8_t failures = 0;       // Fehlschläge in Folge (bestimmt den Abstand)
         bool active() const { return !sid.empty(); }
     };
     Subscription subs[3];           // Wiedergabe, Lautstärke (Raum oder Gruppe), Topologie
     std::string subscribedIp;       // für diesen Koordinator gelten die Abos
     bool subscribedGroup = false;
-    uint32_t nextSubscribeAt = 0;
     bool eventPollPending = false;  // Event eingegangen → bald abfragen
     bool topologyPending = false;
     uint32_t eventActionAt = 0;
@@ -559,7 +561,10 @@ void manageSubscriptions(Link& link, uint32_t now) {
         for (auto& sub : link.subs) unsubscribe(sub, link.subscribedIp);
         link.subscribedIp = link.targetIp;
         link.subscribedGroup = link.targetIsGroup;
-        link.nextSubscribeAt = now;
+        for (auto& sub : link.subs) {
+            sub.retryAt = now;
+            sub.failures = 0;
+        }
     }
     const sonos::gena::EventService* wanted[3] = {
         &sonos::gena::AVTransport,
@@ -570,8 +575,15 @@ void manageSubscriptions(Link& link, uint32_t now) {
         Link::Subscription& sub = link.subs[i];
         if (sub.active() && static_cast<int32_t>(now - sub.renewAt) >= 0) {
             subscribe(sub, link.targetIp, *wanted[i]);
-        } else if (!sub.active() && static_cast<int32_t>(now - link.nextSubscribeAt) >= 0) {
-            if (!subscribe(sub, link.targetIp, *wanted[i])) link.nextSubscribeAt = now + kSubscribeRetryMs;
+        } else if (!sub.active() && static_cast<int32_t>(now - sub.retryAt) >= 0) {
+            // jedes Abo für sich: ein Fehlschlag hält die anderen nicht auf
+            if (subscribe(sub, link.targetIp, *wanted[i])) {
+                sub.failures = 0;
+            } else {
+                constexpr int kSteps = sizeof(kSubscribeRetryMs) / sizeof(kSubscribeRetryMs[0]);
+                sub.retryAt = now + kSubscribeRetryMs[sub.failures < kSteps ? sub.failures : kSteps - 1];
+                if (sub.failures < 255) ++sub.failures;
+            }
         }
     }
 }
