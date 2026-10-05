@@ -71,13 +71,14 @@ boden = 5;            // Freiraum hinter dem Becher (Bauteile, Drahtschlaufe zur
 // 6 Pins), die mit vier Drähten am Gerät hängt. Sie steckt in einem Schacht in Achsrichtung hinter dem
 // Gerät; die Buchse schaut hinten unten aus dem Sockel. Beim Abziehen hält die Wand um die Buchse,
 // beim Einstecken ein Tropfen Kleber im Schacht. Kabelzug erreicht das Gerät nicht mehr.
-platine_l = 21.6;     // Länge (0,85″), Buchse an einem Ende
-platine_b = 12.7;     // Breite (0,5″)
+// Maße aus einem Scan der Platine (1200 dpi): Die Buchse sitzt mittig an einer LANGEN Kante.
+platine_l = 12.7;     // Tiefe in Steckrichtung (0,5″)
+platine_b = 21.6;     // Breite quer dazu (0,85″)
 platine_d = 1.6;      // Platinenstärke
-buchse_b = 9.0;       // USB-C-Buchse: Breite
+buchse_b = 9.0;       // USB-C-Buchse: Breite (Scan: 8,9)
 buchse_h = 3.3;       //                Höhe über der Platine
-buchse_ueber = 0.8;   // so weit ragt die Buchse über die Platinenkante (= Wandstärke vor der Platine)
-schacht_y = 9;        // Lage des Schachts neben der Gerätemitte (Richtung alte Buchse, weg von der Antenne)
+buchse_ueber = 1.8;   // so weit ragt die Buchse über die Platinenkante (Scan: 1,5–2,3) = Wand vor der Platine
+schacht_y = 11;       // Lage des Schachts neben der Gerätemitte (Richtung alte Buchse, weg von der Antenne)
 schacht_spiel = 0.2;
 stecker_mulde = [13.5, 7.5];   // Mulde außen für das Steckergehäuse
 gewicht_d = 40;       // Gewichtstasche im Boden (z. B. Unterlegscheiben M20, Ø 37)

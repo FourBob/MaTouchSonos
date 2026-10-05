@@ -101,7 +101,7 @@ und `dome_w` anpassen (Winkel in Grad, Blick von vorn, Buchse bei 90°; alle dre
 ## USB-C-Buchse im Sockel
 
 Die USB-C-Buchse auf der Geräteplatine ist abgebrochen. Ersatz ist eine Buchsenplatine
-„USB3.1 Type C Female Testboard“ (12,7 × 21,6 mm, 6 Pins: VBUS, GND, CC1, CC2, D+, D−, mit 5,1-kΩ an CC),
+„USB3.1 Type C Female Testboard“ (12,7 × 21,6 mm, Buchse mittig an der langen Kante, 6 Pins: VBUS, GND, CC1, CC2, D+, D−, mit 5,1-kΩ an CC),
 verbunden über vier dünne Drähte (~8 cm):
 
 | Buchsenplatine | Geräteplatine |
@@ -117,13 +117,13 @@ CC1/CC2 bleiben frei (die Widerstände sitzen auf der Buchsenplatine).
 1. Die Buchsenplatine **von innen** (aus dem Hohlraum hinter dem Gerät) in den Schacht schieben, Buchse
    voran und zur Gerätemitte hin, bis sie an der Wand anliegt und die Buchse hinten in der Mulde sitzt.
    Falls die Drähte schon angelötet sind: Platine samt Drähten von innen einfädeln.
-2. Mit **2K-Kleber** (Epoxid) oder reichlich Heißkleber im Schacht festkleben. Der Kleber hält beim
-   Einstecken und Abziehen; die dünne Wand vor der Platine dient nur als Anschlag.
+2. Mit **2K-Kleber** (Epoxid) oder reichlich Heißkleber im Schacht festkleben. Beim Abziehen des Kabels
+   liegt die Platine an der 1,8 mm starken Wand um die Buchse an; der Kleber hält sie beim Einstecken.
 3. Die Drähte als lockere Schlaufe in den Hohlraum hinter dem Gerät legen (5 mm tief), **nicht** an der
    linken Seite (Blick von vorn) entlang: Dort liegt die WLAN-Antenne der Platine.
 
-Parameter: `platine_l`, `platine_b`, `platine_d`, `buchse_b`, `buchse_h`, `buchse_ueber` (Überstand der
-Buchse über die Platinenkante – bitte nachmessen), `schacht_y` (Lage des Schachts).
+Parameter: `platine_l` (Tiefe in Steckrichtung), `platine_b`, `platine_d`, `buchse_b`, `buchse_h`,
+`buchse_ueber` (Überstand der Buchse über die Platinenkante, im Scan 1,5–2,3 mm), `schacht_y` (Lage).
 
 ## Wichtige Parameter
 
