@@ -222,6 +222,8 @@ module schablone() {
         translate([0, 0, z_hinten]) cylinder(d = bohrung_d, h = kragen + 1);
         for (l = dome) rotate([0, 0, l[1]]) translate([l[0], 0, z_hinten - 2]) cylinder(d = schraube_loch, h = 4);
         translate([-6.5, usb_abstand - 4, z_hinten - 2]) cube([13, 8, 4]);   // USB-C (Ausrichtung)
+        // Mitte frei: dort kommen Kabel/Drähte aus dem Gerät (nur ein Ring mit den Dom-Löchern bleibt)
+        translate([0, 0, z_hinten - 2]) cylinder(d = 2 * (dome_r - 3.5), h = 4);
         // Markierung „vorn unten“ (gegenüber der Buchse): Kerbe im Kragen
         translate([-1, -bohrung_d / 2 - 3, z_hinten]) cube([2, 4, kragen + 1]);
     }
