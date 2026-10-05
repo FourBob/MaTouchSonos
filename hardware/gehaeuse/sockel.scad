@@ -43,8 +43,12 @@ saeule_d = 4.0;       // Säule auf dem Dom (muss durch die Aussparung der Plati
 schraube_loch = 2.4;  // Durchgang für M2
 kopf_kanal = 4.8;     // Kanal für Schraubenkopf (Ø ≤ 4,2) und Schraubendreher
 // Lage der Dome in Gerätekoordinaten [Radius, Winkel] (Blick von vorn, USB-C-Buchse bei 90° = „oben“).
-// Aus dem Foto der Rückseite ausgemessen (±1 mm) – mit der Schablone prüfen, siehe README.
-dome = [[22.5, -50], [21.5, 67], [20.5, -168]];
+// Aus einem Flachbett-Scan der Rückseite (1200 dpi) ausgemessen: Die drei Dome bilden ein gleichseitiges
+// Dreieck mit 37,1 mm Seitenlänge (Radius 21,43 mm, je 120°). Die Drehlage stammt aus den drei
+// Platinenlöchern im selben Scan (Eagle-Koordinaten), Unsicherheit etwa ±1,5° (±0,5 mm).
+dome_r = 21.43;
+dome_w = 66.5;        // Dom neben der USB-Buchse; die anderen folgen im Abstand von 120°
+dome = [[dome_r, dome_w], [dome_r, dome_w - 120], [dome_r, dome_w + 120]];
 
 /* [Aufstellung] */
 neigung = 35;         // Displayfläche gegen die Senkrechte: 0 = senkrecht, 90 = liegend

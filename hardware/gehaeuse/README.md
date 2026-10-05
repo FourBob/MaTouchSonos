@@ -71,11 +71,11 @@ ohne Stützen, innen darf es etwas rau sein.
   `einschraub` (Standard 4) = so tief soll die Schraube in den Dom greifen, höchstens Lochtiefe − 0,5.
   Das Modell rechnet mit `schraube_l` und bricht ab, wenn der Schraubenkopf nicht im vollen Material läge.
 
-**Lage der Dome prüfen:** Die Lage (`dome`) ist aus dem Foto der Rückseite ausgemessen, also nur auf etwa
-±1 mm genau. Deshalb zuerst `schablone.stl` drucken (~5 min), mit dem Kragen über das hintere Ende des
+**Lage der Dome prüfen:** Die Lage (`dome_r`, `dome_w`) stammt aus einem Flachbett-Scan der Rückseite:
+gleichseitiges Dreieck, 37,1 mm Seitenlänge, Radius 21,43 mm, je 120°. Die Drehlage ist auf etwa ±1,5° genau. Deshalb zuerst `schablone.stl` drucken (~5 min), mit dem Kragen über das hintere Ende des
 Körpers schieben, den Ausschnitt über die USB-C-Buchse. Eine M2-Schraube muss durch jedes der drei
 Löcher senkrecht in den Dom fallen. Wenn ein Loch daneben liegt: Richtung und ungefähren Versatz notieren
-und `dome` anpassen (Radius in mm, Winkel in Grad, Blick von vorn, Buchse bei 90°).
+und `dome_w` anpassen (Winkel in Grad, Blick von vorn, Buchse bei 90°; alle drei drehen sich mit).
 
 ## Zusammenbau
 
@@ -109,7 +109,7 @@ und `dome` anpassen (Radius in mm, Winkel in Grad, Blick von vorn, Buchse bei 90
 | `becher_rand_d`, `becher_rand_t` | 48, 1.2 | Innen-Ø und Tiefe des Randes ganz oben im Becher (gemessen) |
 | `becher_innen_d` | 46 | Innen-Ø darunter, an den Domen (aus dem Foto) |
 | `schraube_l`, `einschraub` | 12, 4 | Schraubenlänge und wie tief sie in den Dom greift |
-| `dome` | – | Lage der drei Gehäuse-Dome (aus dem Foto, mit `schablone.stl` prüfen) |
+| `dome_r`, `dome_w` | 21.43, 66.5 | Lage der drei Gehäuse-Dome (Radius, Winkel des ersten; je 120°; aus dem Scan) |
 | `fuss_d` | 92 | Durchmesser der Standfläche |
 
 Die Standfläche rückt automatisch so weit nach hinten, dass ein Druck auf die Displaymitte den Sockel
@@ -130,5 +130,6 @@ openscad -o stl/schablone.stl -D 'teil="schablone"' sockel.scad
 - Platinendatei (Eagle, [Makerfabs GitHub](https://github.com/Makerfabs/MaTouch-ESP32-S3-Rotary-IPS-Display-with-Touch-2.1-ST7701)):
   Platine Ø 43,5, USB-C senkrecht bestückt, 17,9 mm neben der Mitte
 - Fotos vom Gerät: Rückseite offen (Platine im Becher mit 3 Schrauben, daneben in Aussparungen der
-  Platine 3 leere Gehäuse-Dome), USB-C zeigt axial nach hinten. Die Lage der Dome ist aus diesem Foto
-  ausgemessen; Kontrolle: Die Platinenlöcher aus demselben Foto treffen die Eagle-Koordinaten auf ~1 mm.
+  Platine 3 leere Gehäuse-Dome), USB-C zeigt axial nach hinten.
+- Flachbett-Scan der Rückseite (1200 dpi, Lochränder mit Lackstift markiert): Lage der Dome; Drehlage
+  über die drei Platinenlöcher im selben Scan (passen zu den Eagle-Koordinaten auf ~0,7 mm).
