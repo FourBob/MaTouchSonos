@@ -64,8 +64,22 @@ rippen = 6;
 fuss_d = 92;          // Ø Standfläche
 fuss_h = 6;           // Höhe des zylindrischen Fußes
 wand = 3.2;           // Wand um die Aufnahme
-boden = 4;            // Freiraum hinter dem Becher (Schrauben, Stecker, Bauteile)
-stecker_d = 14;       // Tunnel für den USB-C-Stecker (gerade Stecker: Gehäuse ~12 × 7)
+boden = 5;            // Freiraum hinter dem Becher (Bauteile, Drahtschlaufe zur USB-Buchsenplatine)
+
+/* [USB-C-Buchsenplatine im Sockel] */
+// Die Buchse des Geräts ist ersetzt durch eine kleine Buchsenplatine („USB3.1 Type C Female Testboard“,
+// 6 Pins), die mit vier Drähten am Gerät hängt. Sie steckt in einem Schacht in Achsrichtung hinter dem
+// Gerät; die Buchse schaut hinten unten aus dem Sockel. Beim Abziehen hält die Wand um die Buchse,
+// beim Einstecken ein Tropfen Kleber im Schacht. Kabelzug erreicht das Gerät nicht mehr.
+platine_l = 21.6;     // Länge (0,85″), Buchse an einem Ende
+platine_b = 12.7;     // Breite (0,5″)
+platine_d = 1.6;      // Platinenstärke
+buchse_b = 9.0;       // USB-C-Buchse: Breite
+buchse_h = 3.3;       //                Höhe über der Platine
+buchse_ueber = 0.8;   // so weit ragt die Buchse über die Platinenkante (= Wandstärke vor der Platine)
+schacht_y = 9;        // Lage des Schachts neben der Gerätemitte (Richtung alte Buchse, weg von der Antenne)
+schacht_spiel = 0.2;
+stecker_mulde = [13.5, 7.5];   // Mulde außen für das Steckergehäuse
 gewicht_d = 40;       // Gewichtstasche im Boden (z. B. Unterlegscheiben M20, Ø 37)
 gewicht_h = 8;
 // Tasche ganz vorn (unter dem schwebenden Kopf): weg von der WLAN-Antenne und vom unteren Schraubenkanal
@@ -136,8 +150,6 @@ module hohlraum() {
         // Freiraum hinter dem Becher (Stecker, Taster, Bauteile). Kein Absatz für den Becherrand:
         // Die Säulen bestimmen die Tiefe, der Rand schwebt darüber.
         translate([0, 0, z_hinten - boden]) cylinder(d = bohrung_d, h = boden + 0.01);
-        // Kabeltunnel in Achsrichtung zur Buchse („oben“ im Gerät = hinten-oben am Sockel)
-        translate([0, usb_abstand, z_hinten - 120]) cylinder(d = stecker_d, h = 120 + 0.01);
     }
 }
 
@@ -172,6 +184,25 @@ module saeulen() {
     }
 }
 
+// Schacht für die Buchsenplatine: von innen (Hohlraum hinter dem Gerät) eingeschoben, Buchse nach hinten.
+// Die Platine liegt quer zur y-Richtung (Breite in x), die Buchse auf der Seite zur Gerätemitte hin.
+z_schacht = z_hinten - boden;                       // Schacht beginnt am Boden des Hohlraums
+schacht_h = platine_d + buchse_h + 2 * schacht_spiel;
+z_buchse = z_schacht - platine_l - schacht_spiel;   // hier liegt die Platinenkante an der Wand
+module usb_schacht() {
+    im_geraet() {
+        y0 = schacht_y - schacht_h / 2;
+        // Schacht für die Platine (nach innen offen, dort kommen die Drähte heraus)
+        translate([-(platine_b / 2 + schacht_spiel), y0, z_buchse]) cube([platine_b + 2 * schacht_spiel, schacht_h, platine_l + schacht_spiel + 0.01]);
+        // Öffnung für die Buchse in der Wand vor der Platine
+        yb = y0 + schacht_spiel + platine_d;        // Buchse sitzt auf der Platine (Seite +y)
+        translate([-(buchse_b / 2 + 0.2), yb - 0.1, z_buchse - buchse_ueber - 0.01]) cube([buchse_b + 0.4, buchse_h + 0.5, buchse_ueber + 0.02]);
+        // Mulde außen für das Steckergehäuse, bis zur Buchsenvorderkante
+        translate([0, yb + buchse_h / 2, z_buchse - buchse_ueber - 60])
+            linear_extrude(60) offset(r = 2) square([stecker_mulde[0] - 4, stecker_mulde[1] - 4], center = true);
+    }
+}
+
 module schraubenkanaele() {
     im_geraet() for (l = dome) rotate([0, 0, l[1]]) translate([l[0], 0, 0]) {
         translate([0, 0, z_kopf - 0.01]) cylinder(d = schraube_loch, h = z_dom - z_kopf + 1);
@@ -187,10 +218,10 @@ module sockel() {
                 hohlraum();
             }
             saeulen();
-            // Rippen bleiben innerhalb der Aufnahme stehen (nicht im Kabeltunnel)
-            difference() { quetschrippen(); im_geraet() translate([0, usb_abstand, z_hinten - 1]) cylinder(d = stecker_d, h = griff + 2); }
+            quetschrippen();
         }
         schraubenkanaele();
+        usb_schacht();
         gewichtstasche();
         fuesse();
         translate([-200, -200, -100]) cube([400, 400, 100]);   // alles unter dem Tisch weg
@@ -221,7 +252,7 @@ module schablone() {
         translate([0, 0, z_hinten - 1.2]) cylinder(d = bohrung_d + 2 * 1.6, h = 1.2 + kragen);
         translate([0, 0, z_hinten]) cylinder(d = bohrung_d, h = kragen + 1);
         for (l = dome) rotate([0, 0, l[1]]) translate([l[0], 0, z_hinten - 2]) cylinder(d = schraube_loch, h = 4);
-        translate([-6.5, usb_abstand - 4, z_hinten - 2]) cube([13, 8, 4]);   // USB-C (Ausrichtung)
+        translate([-6.5, usb_abstand - 4, z_hinten - 2]) cube([13, 8, 4]);   // alte USB-C-Stelle (Ausrichtung)
         // Mitte frei: dort kommen Kabel/Drähte aus dem Gerät (nur ein Ring mit den Dom-Löchern bleibt)
         translate([0, 0, z_hinten - 2]) cylinder(d = 2 * (dome_r - 3.5), h = 4);
         // Markierung „vorn unten“ (gegenüber der Buchse): Kerbe im Kragen

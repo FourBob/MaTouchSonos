@@ -4,16 +4,18 @@ Parametrischer 3D-Druck-Sockel (OpenSCAD) für die MaTouchSonos-Fernbedienung.
 
 | Vom Sofa aus | Von der Seite | Von hinten |
 |---|---|---|
-| ![Ansicht vom Sofa](bilder/ansicht_sofa.png) | ![Seitenansicht](bilder/ansicht_seite.png) | ![Rückansicht mit Kabeltunnel](bilder/ansicht_hinten.png) |
+| ![Ansicht vom Sofa](bilder/ansicht_sofa.png) | ![Seitenansicht](bilder/ansicht_seite.png) | ![Rückansicht mit USB-C-Buchse](bilder/ansicht_hinten.png) |
 
-| Aufnahme mit Säulen | Rückseite: Kabeltunnel + 2 Schraubenkanäle | Unterseite: Gewichtstasche, Füße, 3. Schraubenkanal |
+| Aufnahme mit Säulen | Rückseite: USB-C-Buchse + 2 Schraubenkanäle | Unterseite: Gewichtstasche, Füße, 3. Schraubenkanal |
 |---|---|---|
 | ![Aufnahme](bilder/sockel_oben.png) | ![Rückseite](bilder/sockel_hinten.png) | ![Unterseite](bilder/sockel_unten.png) |
 
 **Idee:** Der Sockel hält nur den hinteren Körper des Geräts. Der Kopf mit Display und Drehring
 **schwebt frei** darüber. Nichts berührt den Ring, und der Drückweg (2 mm) bleibt frei. Die Front ist
-um 35° gegen die Senkrechte geneigt, damit sie vom Sofa aus gut lesbar ist. Das USB-C-Kabel kommt
-von hinten durch einen Tunnel genau in Achsrichtung zur Buchse.
+um 35° gegen die Senkrechte geneigt, damit sie vom Sofa aus gut lesbar ist. Das USB-C-Kabel steckt
+hinten unten **im Sockel**: Eine kleine USB-C-Buchsenplatine sitzt eingeklebt in einem Schacht und ist
+mit vier dünnen Drähten mit dem Gerät verbunden (die Buchse auf der Geräteplatine ist abgebrochen, siehe
+unten). Zug am Kabel erreicht das Gerät nicht.
 
 **Befestigung:** Das Gerätegehäuse hat drei eigene Schraubdome. Sie liegen in den Aussparungen am Rand
 der Platine und sind leer. Drei M2-Schrauben gehen von hinten bzw. unten durch Kanäle im Sockel und durch
@@ -89,12 +91,39 @@ und `dome_w` anpassen (Winkel in Grad, Blick von vorn, Buchse bei 90°; alle dre
    weg von der WLAN-Antenne. Den RSSI-Wert im Log (`WLAN verbunden, … RSSI`) trotzdem einmal mit und
    ohne Gewicht vergleichen.
 3. **Füße:** 4 selbstklebende Silikonfüße (Ø 10 mm, z. B. 3M Bumpon) in die Mulden kleben.
-4. **Gerät einsetzen:** so drehen, dass die USB-C-Buchse zum Kabeltunnel zeigt („oben“ am Display).
-   Dann passen die drei Säulen genau durch die Aussparungen der Platine auf die Gehäuse-Dome. Einschieben,
+4. **Gerät einsetzen:** so drehen, dass die Stelle der alten USB-C-Buchse zum Schacht zeigt („oben“ am
+   Display). Dann passen die drei Säulen genau durch die Aussparungen der Platine auf die Gehäuse-Dome. Einschieben,
    bis die Dome auf den Säulen aufliegen. Die Platinen-Schrauben bleiben drin.
 5. **Verschrauben:** Die drei M2-Schrauben durch die Kanäle einsetzen, zwei hinten und einer von unten,
    und handfest anziehen. Nicht überdrehen, die Dome sind aus Kunststoff.
-6. **Kabel:** Den USB-C-Stecker gerade von hinten durch den Tunnel schieben und einstecken.
+6. **Kabel:** Einstecken – fertig.
+
+## USB-C-Buchse im Sockel
+
+Die USB-C-Buchse auf der Geräteplatine ist abgebrochen. Ersatz ist eine Buchsenplatine
+„USB3.1 Type C Female Testboard“ (12,7 × 21,6 mm, 6 Pins: VBUS, GND, CC1, CC2, D+, D−, mit 5,1-kΩ an CC),
+verbunden über vier dünne Drähte (~8 cm):
+
+| Buchsenplatine | Geräteplatine |
+|---|---|
+| VBUS | C16, 5-V-Seite (oberes Ende, zum Regler „JL309“ hin) |
+| GND | C16, andere Seite, oder ein Langloch der alten Buchse |
+| D+ | R21 (33 Ω unter dem ESP32) |
+| D− | R20 (daneben) |
+
+CC1/CC2 bleiben frei (die Widerstände sitzen auf der Buchsenplatine).
+
+**Einbau** (vor Schritt 4 oben):
+1. Die Buchsenplatine **von innen** (aus dem Hohlraum hinter dem Gerät) in den Schacht schieben, Buchse
+   voran und zur Gerätemitte hin, bis sie an der Wand anliegt und die Buchse hinten in der Mulde sitzt.
+   Falls die Drähte schon angelötet sind: Platine samt Drähten von innen einfädeln.
+2. Mit **2K-Kleber** (Epoxid) oder reichlich Heißkleber im Schacht festkleben. Der Kleber hält beim
+   Einstecken und Abziehen; die dünne Wand vor der Platine dient nur als Anschlag.
+3. Die Drähte als lockere Schlaufe in den Hohlraum hinter dem Gerät legen (5 mm tief), **nicht** an der
+   linken Seite (Blick von vorn) entlang: Dort liegt die WLAN-Antenne der Platine.
+
+Parameter: `platine_l`, `platine_b`, `platine_d`, `buchse_b`, `buchse_h`, `buchse_ueber` (Überstand der
+Buchse über die Platinenkante – bitte nachmessen), `schacht_y` (Lage des Schachts).
 
 ## Wichtige Parameter
 
