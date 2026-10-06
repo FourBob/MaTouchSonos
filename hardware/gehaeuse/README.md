@@ -31,6 +31,7 @@ Quetschrippen zentrieren nur.
 |---|---|
 | `sockel.scad` | Modell. Alle Maße stehen oben als Parameter (auch im Customizer von OpenSCAD). |
 | `stl/sockel.stl` | Sockel, 92 × 92 × 64 mm |
+| `stl/sockel_aufrecht.stl` | Derselbe Sockel, gekippt: Geräteachse senkrecht (Alternative, siehe „Drucken“) |
 | `stl/deckel.stl` | Deckel für die Gewichtstasche im Boden |
 | `stl/passtest.stl` | Nur die Aufnahme als 10 mm hoher Ring: **zuerst drucken**, um die Passung zu prüfen (~10 min) |
 | `stl/schablone.stl` | Kappe mit den drei Dom-Löchern: prüft die Lage der Dome (~5 min), siehe unten |
@@ -48,8 +49,17 @@ Quetschrippen zentrieren nur.
 | Stützen | **keine**. Standfläche nach unten, so wie die STL liegt. |
 | Naht | „Hinten“, also auf der Kabelseite |
 
-Der Tunnel und die Oberseite der Aufnahme sind innen leicht überhängend (etwa 40°). Das druckt der P1S
-ohne Stützen, innen darf es etwas rau sein.
+**Zwei Druckrichtungen:**
+
+| | `sockel.stl` (Standfläche unten) | `sockel_aufrecht.stl` (Geräteachse senkrecht) |
+|---|---|---|
+| Stützen | keine | ja: unter dem schrägen Fuß (Baum-Stützen, „nur auf der Bauplatte“) |
+| Bohrung, Säulen, Schraubenkanäle, Schacht | 55° geneigt: Bohrung leicht stufig, Schachtdecke hängt über (kann etwas durchhängen) | senkrecht: rund und maßhaltig, kein Überhang |
+| Unterseite | glatt mit Struktur der PEI-Platte | Stützspuren (sieht man nicht) |
+| Außenfläche | Schichtlinien waagerecht zum Tisch | Schichtlinien schräg |
+
+Empfehlung: zuerst `sockel.stl`. Wenn das Gerät in der Aufnahme nicht sauber sitzt oder die Buchsenplatine
+nicht in den Schacht passt, `sockel_aufrecht.stl` drucken.
 
 ## Material
 
@@ -148,6 +158,7 @@ hinter der Displaymitte.
 STL neu erzeugen:
 ```bash
 openscad -o stl/sockel.stl   -D 'teil="sockel"'   sockel.scad
+openscad -o stl/sockel_aufrecht.stl -D 'teil="sockel_aufrecht"' sockel.scad
 openscad -o stl/deckel.stl   -D 'teil="deckel"'   sockel.scad
 openscad -o stl/passtest.stl -D 'teil="passtest"' sockel.scad
 openscad -o stl/schablone.stl -D 'teil="schablone"' sockel.scad

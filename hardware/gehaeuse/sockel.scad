@@ -21,7 +21,7 @@
 //   "schablone"   – Kappe für die Gehäuserückseite mit den drei Dom-Löchern: Lage prüfen (~5 min)
 //   "ansicht"     – Sockel mit Gerät (nur zum Anschauen, nicht drucken)
 
-teil = "ansicht"; // [sockel, deckel, passtest, schablone, ansicht]
+teil = "ansicht"; // [sockel, sockel_aufrecht, deckel, passtest, schablone, ansicht]
 
 /* [Gerät] */
 kopf_d = 79;          // Ø Kopf (Display + Drehring)
@@ -271,6 +271,13 @@ module geraet() {
 }
 
 if (teil == "sockel") sockel();
+else if (teil == "sockel_aufrecht") {
+    // Alternative Druckrichtung: Geräteachse senkrecht, Aufnahme oben. Bohrung, Säulen, Schraubenkanäle
+    // und Schacht stehen dann senkrecht (maßhaltig, ohne Überhang); der Fuß steht schräg und braucht
+    // Stützen (Baum-Stützen nur auf der Bauplatte).
+    // (+45: tiefster Punkt des schrägen Fußes auf die Platte; Slicer legen das Teil ohnehin auf)
+    translate([0, 0, 45 - (z_hinten - boden - wand)]) rotate([-kipp, 0, 0]) translate([0, 0, -hz]) sockel();
+}
 else if (teil == "deckel") deckel();
 else if (teil == "passtest") {
     // zum Drucken flach hinlegen: Mündung nach oben
